@@ -16,8 +16,12 @@ fn main() {
     let mut names: Vec<&String> = json.keys().collect();
     names.sort();
     for name in &names {
-        if *name != "__metadata__" {
-            println!("{}", name);
+        if *name == "__metadata__" {
+            continue;
         }
+        let entry = &json[*name];
+        let shape_orig = entry["shape"].clone();
+        let shape: Vec<i64> = serde_json::from_value(shape_orig).expect("Failed to parse shape");
+        println!("{} {:?}", name, shape);
     }
 }
