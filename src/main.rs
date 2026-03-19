@@ -3,10 +3,12 @@ mod norm;
 mod embeddings;
 mod matmul;
 mod linear;
+mod attention;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use crate::attention::extract_v;
 use crate::embeddings::{combine_embedding_weights};
 use crate::linear::linear_projection;
 use crate::norm::layer_norm;
@@ -80,6 +82,8 @@ fn main() {
     let ln_bias = model.load_tensor("h.0.ln_1.bias");
     let qkv_weight = model.load_tensor("h.0.attn.c_attn.weight");
     let qkv_bias = model.load_tensor("h.0.attn.c_attn.bias");
+    let proj_weight = model.load_tensor("h.0.attn.c_proj.weight");
+    let proj_bias = model.load_tensor("h.0.attn.c_proj.bias");
 
     let token_id = 464;
     let dim = 768;
@@ -94,8 +98,11 @@ fn main() {
     let qkv_combined_dim = dim * 3; // all 3 weights are of the same size
     let qkv = linear_projection(&ln_out, &qkv_weight, &qkv_bias, qkv_combined_dim);
 
+    let v = extract_v(&qkv);
+    let attn_out = linear_projection(&v, &proj_weight, &proj_bias, dim);
+
     for i in 0..10 {
-        let v = &qkv[i];
-        println!("{:.6}", v)
+        let v = &attn_out[i];
+        println!("{:.4}", v)
     }
 }

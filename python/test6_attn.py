@@ -9,10 +9,7 @@ with torch.no_grad():
     wte = model.transformer.wte(input_ids)
     wpe = model.transformer.wpe(torch.tensor([[0]]))
     hidden = wte + wpe
-    ln_out = model.transformer.h[0].ln_1(hidden)
-    qkv_weight = model.transformer.h[0].attn.c_attn.weight
-    qkv_bias = model.transformer.h[0].attn.c_attn.bias
-    qkv = ln_out @ qkv_weight + qkv_bias
+    attn_out = model.transformer.h[0].attn(model.transformer.h[0].ln_1(hidden))[0]
 
-for v in qkv[0][0][:10].tolist():
-    print(f"{v:.6f}")
+for v in attn_out[0][0][:10].tolist():
+    print(f"{v:.4f}")
