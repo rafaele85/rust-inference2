@@ -10,3 +10,4 @@
 - [ ] No generation loop — implement greedy autoregressive decoding
 - [ ] Model path hardcoded as string — accept as CLI argument
 - [ ] Flat f32 slices have no shape info — introduce Tensor struct to carry shape with data
+- [ ] Attention is single-token only — implement multi-head scaled dot-product attention for sequences

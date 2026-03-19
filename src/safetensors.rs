@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::format;
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::io::SeekFrom::Start;
@@ -43,6 +44,9 @@ impl SafeTensor {
     }
 
     pub fn load_tensor(&mut self, name: &str) -> Vec<f32> {
+        if !self.entries.contains_key(name) {
+            println!("NOT FOUND KEY {}", name);
+        }
         let entry = &self.entries[name];
         let start = self.data_offset + entry.offsets[0];
         let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
@@ -55,4 +59,24 @@ impl SafeTensor {
 
         result
     }
+}
+
+
+fn load_weight_bias(model: &mut SafeTensor, name: &str) -> (Vec<f32>, Vec<f32>) {
+    let w = model.load_tensor( &format!("{}.weight", name));
+    let b = model.load_tensor(&format!("{}.bias", name));
+
+    (w, b)
+}
+pub fn load_layer0(model: &mut SafeTensor) -> (
+  Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,
+) {
+    let (ln1_w, ln1_b) = load_weight_bias(model, "h.0.ln_1");
+    let (qkv_w, qkv_b) = load_weight_bias(model, "h.0.attn.c_attn");
+    let (proj_w, proj_b) = load_weight_bias(model, "h.0.attn.c_proj");
+    let (ln2_w, ln2_b) = load_weight_bias(model, "h.0.ln_2");
+    let (ffn_up_w, ffn_up_b) = load_weight_bias(model, "h.0.mlp.c_fc");
+    let (ffn_down_w, ffn_down_b) = load_weight_bias(model, "h.0.mlp.c_proj");
+
+    (ln1_w, ln1_b, qkv_w, qkv_b, proj_w, proj_b, ln2_w, ln2_b, ffn_up_w, ffn_up_b, ffn_down_w, ffn_down_b)
 }

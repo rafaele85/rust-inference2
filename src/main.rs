@@ -4,105 +4,49 @@ mod embeddings;
 mod matmul;
 mod linear;
 mod attention;
+mod activation;
 
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek};
+use crate::activation::gelu;
 use crate::attention::extract_v;
 use crate::embeddings::{combine_embedding_weights};
-use crate::linear::linear_projection;
+use crate::linear::{linear_projection, normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::norm::layer_norm;
-use crate::safetensors::SafeTensor;
-
-fn test1() {
-    let mut file = File::open("./model/model.safetensors").expect("Model file not found");
-    let mut buf = [0u8; 8];
-    file.read_exact(&mut buf).expect("Failed to read file");
-    let header_len = u64::from_le_bytes(buf) as usize;
-
-    let mut header_bytes = vec![0u8; header_len];
-    file.read_exact(&mut header_bytes).expect("Failed to read file");
-    let header_str = String::from_utf8(header_bytes).expect("Failed to parse header bytes");
-
-    let json: HashMap<String, serde_json::Value> = serde_json::from_str(&header_str).expect("Failed to parse header");
-
-    let data_offset = 8 + header_len as u64;
-    let tensor_name = "wpe.weight"; //"wte.weight"; //"ln_f.bias";
-    let entry = &json[tensor_name];
-    let offsets_orig = entry["data_offsets"].clone();
-
-    //println!("raw entry: {}", entry);
-
-    let offsets: Vec<u64> = serde_json::from_value(offsets_orig).expect("Failed to parse offsets");
-
-    //println!("offsets: {:?}", offsets);
-
-    let start = data_offset + offsets[0];
-    let end = data_offset + offsets[1];
-    let byte_len = (end - start) as usize;
-
-    //println!("byte_len: {}", byte_len);
-
-    let mut names: Vec<&String> = json.keys().collect();
-    names.sort();
-    for name in &names {
-        if *name == "__metadata__" {
-            continue;
-        }
-        let entry = &json[*name];
-        let shape_orig = entry["shape"].clone();
-        let shape: Vec<i64> = serde_json::from_value(shape_orig).expect("Failed to parse shape");
-
-        let offsets_orig = entry["data_offsets"].clone();
-        let offsets: Vec<i64> = serde_json::from_value(offsets_orig).expect("Failed to parse offsets");
-        //println!("{} {:?} [{}, {}]", name, shape, offsets[0], offsets[1]);
-    }
-
-    let mut tensor_bytes = vec![0u8; byte_len];
-    file.seek(SeekFrom::Start(start)).expect("Failed to seek");
-    file.read_exact(&mut tensor_bytes).expect("Failed to read file");
-
-    let floats: Vec<f32> = tensor_bytes.chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
-
-    let token_id = 0; //464;
-    let dim = 768;
-    let row_start = token_id * dim;
-
-    for v in &floats[row_start..row_start + 10] {
-        println!("{:.6}", v)
-    }
-}
+use crate::safetensors::{load_layer0, SafeTensor};
 
 fn main() {
     let mut model = SafeTensor::open("model/model.safetensors");
     let wte = model.load_tensor("wte.weight");
     let wpe = model.load_tensor("wpe.weight");
-    let ln_weight = model.load_tensor("h.0.ln_1.weight");
-    let ln_bias = model.load_tensor("h.0.ln_1.bias");
-    let qkv_weight = model.load_tensor("h.0.attn.c_attn.weight");
-    let qkv_bias = model.load_tensor("h.0.attn.c_attn.bias");
-    let proj_weight = model.load_tensor("h.0.attn.c_proj.weight");
-    let proj_bias = model.load_tensor("h.0.attn.c_proj.bias");
+    let (ln1_w, ln1_b, qkv_w, qkv_b, proj_w, proj_b, ln2_w, ln2_b, ffn_up_w, ffn_up_b, ffn_down_w, ffn_down_b) =
+        load_layer0(&mut model);
 
     let token_id = 464;
     let dim = 768;
+    let ffn_dim = 3072;
+    let qkv_combined_dim = dim * 3; // all 3 weights are of the same size
+
+
     let wte_start = token_id * dim;
     let wte_row = &wte[wte_start..wte_start + dim];
     let wpe_row = &wpe[0..dim];
 
-    let hidden = combine_embedding_weights(wte_row, wpe_row);
+    let mut hidden: Vec<f32> = combine_embedding_weights(wte_row, wpe_row);
 
-    let ln_out = layer_norm(&hidden, &ln_weight, &ln_bias);
-
-    let qkv_combined_dim = dim * 3; // all 3 weights are of the same size
-    let qkv = linear_projection(&ln_out, &qkv_weight, &qkv_bias, qkv_combined_dim);
+    let qkv = normalize_and_project(NormalizeAndProject {hidden: &mut hidden, norm_weights: &ln1_w, norm_bias: &ln1_b, projection_weights: &qkv_w, projection_bias: &qkv_b, projection_dim: qkv_combined_dim});
 
     let v = extract_v(&qkv);
-    let attn_out = linear_projection(&v, &proj_weight, &proj_bias, dim);
+
+    project_and_residual(ProjectAndResidualArgs {activation_weights: &v, projection_weights: &proj_w, projection_bias: &proj_b, dim: dim, hidden: &mut hidden });
+
+    let ffn_up = normalize_and_project(NormalizeAndProject {hidden: &mut hidden, norm_weights: &ln2_w, norm_bias: &ln2_b, projection_weights: &ffn_up_w, projection_bias: &ffn_up_b, projection_dim: ffn_dim});
+
+    let ffn_act = gelu(&ffn_up);
+
+    project_and_residual(ProjectAndResidualArgs {activation_weights: &ffn_act, projection_weights: &ffn_down_w, projection_bias: &ffn_down_b, dim: dim, hidden: &mut hidden });
 
     for i in 0..10 {
-        let v = &attn_out[i];
+        let v = &hidden[i];
         println!("{:.4}", v)
     }
 }

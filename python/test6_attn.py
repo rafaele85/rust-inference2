@@ -9,7 +9,7 @@ with torch.no_grad():
     wte = model.transformer.wte(input_ids)
     wpe = model.transformer.wpe(torch.tensor([[0]]))
     hidden = wte + wpe
-    attn_out = model.transformer.h[0].attn(model.transformer.h[0].ln_1(hidden))[0]
+    hidden = model.transformer.h[0](hidden)
 
-for v in attn_out[0][0][:10].tolist():
+for v in hidden[0][0][:10].tolist():
     print(f"{v:.4f}")
