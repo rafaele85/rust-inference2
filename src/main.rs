@@ -15,14 +15,21 @@ fn main() {
     let json: HashMap<String, serde_json::Value> = serde_json::from_str(&header_str).expect("Failed to parse header");
 
     let data_offset = 8 + header_len as u64;
-    let tensor_name = "ln_f.bias";
+    let tensor_name = "wte.weight"; //"ln_f.bias";
     let entry = &json[tensor_name];
     let offsets_orig = entry["data_offsets"].clone();
+
+    //println!("raw entry: {}", entry);
+
     let offsets: Vec<u64> = serde_json::from_value(offsets_orig).expect("Failed to parse offsets");
+
+    //println!("offsets: {:?}", offsets);
+
     let start = data_offset + offsets[0];
     let end = data_offset + offsets[1];
     let byte_len = (end - start) as usize;
 
+    //println!("byte_len: {}", byte_len);
 
     let mut names: Vec<&String> = json.keys().collect();
     names.sort();
@@ -46,9 +53,14 @@ fn main() {
     let floats: Vec<f32> = tensor_bytes.chunks_exact(4)
         .map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
 
-    for v in &floats[..10] {
+    let token_id = 464;
+    let dim = 768;
+    let row_start = token_id * dim;
+
+    for v in &floats[row_start..row_start + 10] {
         println!("{:.6}", v)
     }
+
 
 
 }
