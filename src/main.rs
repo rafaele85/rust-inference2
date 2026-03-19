@@ -1,8 +1,12 @@
 mod safetensors;
+mod norm;
+mod embeddings;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use crate::embeddings::{combine_embedding_weights};
+use crate::norm::layer_norm;
 use crate::safetensors::SafeTensor;
 
 fn test1() {
@@ -69,14 +73,21 @@ fn main() {
     let mut model = SafeTensor::open("model/model.safetensors");
     let wte = model.load_tensor("wte.weight");
     let wpe = model.load_tensor("wpe.weight");
+    let ln_weight = model.load_tensor("h.0.ln_1.weight");
+    let ln_bias = model.load_tensor("h.0.ln_1.bias");
 
     let token_id = 464;
     let dim = 768;
     let wte_start = token_id * dim;
-    let wpe_start = 0 * dim;
+    let wte_row = &wte[wte_start..wte_start + dim];
+    let wpe_row = &wpe[0..dim];
+
+    let hidden = combine_embedding_weights(wte_row, wpe_row);
+
+    let len_out = layer_norm(&hidden, &ln_weight, &ln_bias);
 
     for i in 0..10 {
-        let v = wte[wte_start + i] + wpe[wpe_start + i];
+        let v = &len_out[i];
         println!("{:.6}", v)
     }
 }
