@@ -68,9 +68,23 @@ fn load_weight_bias(model: &mut SafeTensor, name: &str, layer: usize) -> (Vec<f3
 
     (w, b)
 }
-pub fn load_layer(model: &mut SafeTensor, layer: usize) -> (
-  Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,Vec<f32>, Vec<f32>,
-) {
+
+pub struct Layer {
+    pub ln1_w: Vec<f32>,
+    pub ln1_b: Vec<f32>,
+    pub proj_w: Vec<f32>,
+    pub proj_b: Vec<f32>,
+    pub ln2_w: Vec<f32>,
+    pub ln2_b: Vec<f32>,
+    pub ffn_up_w: Vec<f32>,
+    pub ffn_up_b: Vec<f32>,
+    pub ffn_down_w: Vec<f32>,
+    pub ffn_down_b: Vec<f32>,
+    pub qkv_w: Vec<f32>,
+    pub qkv_b: Vec<f32>,
+}
+
+pub fn load_layer(model: &mut SafeTensor, layer: usize) -> Layer {
     let (ln1_w, ln1_b) = load_weight_bias(model, "ln_1", layer);
     let (qkv_w, qkv_b) = load_weight_bias(model, "attn.c_attn", layer);
     let (proj_w, proj_b) = load_weight_bias(model, "attn.c_proj", layer);
@@ -78,5 +92,16 @@ pub fn load_layer(model: &mut SafeTensor, layer: usize) -> (
     let (ffn_up_w, ffn_up_b) = load_weight_bias(model, "mlp.c_fc", layer);
     let (ffn_down_w, ffn_down_b) = load_weight_bias(model, "mlp.c_proj", layer);
 
-    (ln1_w, ln1_b, qkv_w, qkv_b, proj_w, proj_b, ln2_w, ln2_b, ffn_up_w, ffn_up_b, ffn_down_w, ffn_down_b)
+    Layer { ln1_w, ln1_b, qkv_w, qkv_b, proj_w, proj_b, ln2_w, ln2_b, ffn_up_w, ffn_up_b, ffn_down_w, ffn_down_b }
+}
+
+pub fn load_all_layers(model: &mut SafeTensor, nlayers: usize) -> Vec<Layer> {
+
+    let mut layers = Vec::with_capacity(nlayers);
+    for i in 0..nlayers {
+        let layer = load_layer(model, i);
+        layers.push(layer);
+    }
+
+    layers
 }
