@@ -1,11 +1,14 @@
 mod safetensors;
 mod norm;
 mod embeddings;
+mod matmul;
+mod linear;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use crate::embeddings::{combine_embedding_weights};
+use crate::linear::linear_projection;
 use crate::norm::layer_norm;
 use crate::safetensors::SafeTensor;
 
@@ -75,6 +78,8 @@ fn main() {
     let wpe = model.load_tensor("wpe.weight");
     let ln_weight = model.load_tensor("h.0.ln_1.weight");
     let ln_bias = model.load_tensor("h.0.ln_1.bias");
+    let qkv_weight = model.load_tensor("h.0.attn.c_attn.weight");
+    let qkv_bias = model.load_tensor("h.0.attn.c_attn.bias");
 
     let token_id = 464;
     let dim = 768;
@@ -84,10 +89,13 @@ fn main() {
 
     let hidden = combine_embedding_weights(wte_row, wpe_row);
 
-    let len_out = layer_norm(&hidden, &ln_weight, &ln_bias);
+    let ln_out = layer_norm(&hidden, &ln_weight, &ln_bias);
+
+    let qkv_combined_dim = dim * 3; // all 3 weights are of the same size
+    let qkv = linear_projection(&ln_out, &qkv_weight, &qkv_bias, qkv_combined_dim);
 
     for i in 0..10 {
-        let v = &len_out[i];
+        let v = &qkv[i];
         println!("{:.6}", v)
     }
 }
