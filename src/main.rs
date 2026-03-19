@@ -1,8 +1,11 @@
+mod safetensors;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use crate::safetensors::SafeTensor;
 
-fn main() {
+fn test1() {
     let mut file = File::open("./model/model.safetensors").expect("Model file not found");
     let mut buf = [0u8; 8];
     file.read_exact(&mut buf).expect("Failed to read file");
@@ -15,7 +18,7 @@ fn main() {
     let json: HashMap<String, serde_json::Value> = serde_json::from_str(&header_str).expect("Failed to parse header");
 
     let data_offset = 8 + header_len as u64;
-    let tensor_name = "wte.weight"; //"ln_f.bias";
+    let tensor_name = "wpe.weight"; //"wte.weight"; //"ln_f.bias";
     let entry = &json[tensor_name];
     let offsets_orig = entry["data_offsets"].clone();
 
@@ -53,14 +56,27 @@ fn main() {
     let floats: Vec<f32> = tensor_bytes.chunks_exact(4)
         .map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
 
-    let token_id = 464;
+    let token_id = 0; //464;
     let dim = 768;
     let row_start = token_id * dim;
 
     for v in &floats[row_start..row_start + 10] {
         println!("{:.6}", v)
     }
+}
 
+fn main() {
+    let mut model = SafeTensor::open("model/model.safetensors");
+    let wte = model.load_tensor("wte.weight");
+    let wpe = model.load_tensor("wpe.weight");
 
+    let token_id = 464;
+    let dim = 768;
+    let wte_start = token_id * dim;
+    let wpe_start = 0 * dim;
 
+    for i in 0..10 {
+        let v = wte[wte_start + i] + wpe[wpe_start + i];
+        println!("{:.6}", v)
+    }
 }
