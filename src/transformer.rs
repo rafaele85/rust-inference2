@@ -1,7 +1,7 @@
 use crate::activation::gelu;
-use crate::attention::extract_v;
+use crate::attention::{extract_q, extract_v};
 use crate::embeddings::combine_embedding_weights;
-use crate::linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
+use crate::linear::{linear_projection, normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::matmul::matmul_transposed;
 use crate::norm::layer_norm;
 use crate::safetensors::Layer;
@@ -72,4 +72,57 @@ pub fn transformer(args: TransformerArgs) -> usize {
     let top_id = logits.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0;
 
     top_id
+}
+
+
+
+pub struct TransformerMultiArgs<'a> {
+    pub num_layers: usize,
+    pub wte: &'a Vec<f32>,
+    pub wpe: &'a Vec<f32>,
+    pub layers: &'a Vec<Layer>,
+    pub norm_final_weight: &'a Vec<f32>,
+    pub norm_final_bias: &'a Vec<f32>,
+    pub dim: usize,
+    pub token_ids: &'a Vec<usize>,
+    pub ln_f_w: &'a Vec<f32>,
+    pub ln_f_b: &'a Vec<f32>,
+}
+pub fn transformer_multi(args: TransformerMultiArgs) {
+    let seq_len = args.token_ids.len();
+    let last_pos = seq_len - 1;
+    let qkv_size = args.dim * 3;
+    let all_qkv_size = seq_len * qkv_size;
+    let last_pos_offset = last_pos * qkv_size;
+    let hidden_size = seq_len * args.dim;
+    let mut hidden = vec![0.0f32; hidden_size];
+
+    for (pos, &token_id) in args.token_ids.iter().enumerate() {
+        for i in 0..args.dim {
+            let offset = pos * args.dim;
+            hidden[offset + i] = args.wte[token_id * args.dim + i] + args.wpe[offset + i];
+        }
+    }
+
+
+    for layer_no in 0..args.num_layers {
+
+        let layer = &args.layers[layer_no];
+        let mut all_qkv = vec![0.0f32; all_qkv_size];
+        for pos in 0..seq_len {
+            let offset = pos * args.dim;
+            let mut h = &hidden[offset..offset + args.dim];
+            let qkv = normalize_and_project(NormalizeAndProject {
+                hidden: &mut h.to_vec(), norm_weights: &layer.ln1_w, norm_bias: &layer.ln1_b, projection_weights: &layer.qkv_w, projection_bias: &layer.qkv_b, projection_dim: qkv_size
+            });
+            let qkv_offset = pos * qkv_size;
+            all_qkv[qkv_offset..qkv_offset + qkv_size].copy_from_slice(&qkv);
+        }
+
+        let last_qkv = &all_qkv[last_pos_offset..last_pos_offset + qkv_size];
+        let q = extract_q(last_qkv);
+        for v in &q[..10] {
+            println!("{:.4}", v);
+        }
+    }
 }
