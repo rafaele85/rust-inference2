@@ -74,6 +74,26 @@ pub fn transformer(args: TransformerArgs) -> usize {
     top_id
 }
 
+pub struct InitializeHiddenArgs<'a> {
+    pub hidden_size: usize,
+    pub dim: usize,
+    pub wte: &'a Vec<f32>,
+    pub wpe: &'a Vec<f32>,
+    pub token_ids: &'a Vec<usize>
+}
+pub fn initialize_hidden(args: InitializeHiddenArgs) -> Vec<f32> {
+    let InitializeHiddenArgs {hidden_size, dim, wte, wpe, token_ids} = args;
+    let mut hidden = vec![0.0f32; hidden_size];
+
+    for (pos, &token_id) in token_ids.iter().enumerate() {
+        for i in 0..dim {
+            let offset = pos * dim;
+            hidden[offset + i] = wte[token_id * dim + i] + wpe[offset + i];
+        }
+    }
+
+    hidden
+}
 
 
 pub struct TransformerMultiArgs<'a> {
@@ -89,35 +109,21 @@ pub struct TransformerMultiArgs<'a> {
     pub ln_f_b: &'a Vec<f32>,
 }
 pub fn transformer_multi(args: TransformerMultiArgs) {
-    let seq_len = args.token_ids.len();
+    let TransformerMultiArgs {
+        dim, norm_final_weight,norm_final_bias, num_layers, layers, ln_f_w, ln_f_b, wte, wpe,  token_ids
+    } = args;
+    let seq_len = token_ids.len();
     let last_pos = seq_len - 1;
-    let qkv_size = args.dim * 3;
+    let qkv_size = dim * 3;
     let all_qkv_size = seq_len * qkv_size;
     let last_pos_offset = last_pos * qkv_size;
-    let hidden_size = seq_len * args.dim;
-    let mut hidden = vec![0.0f32; hidden_size];
+    let hidden_size = seq_len * dim;
 
-    for (pos, &token_id) in args.token_ids.iter().enumerate() {
-        for i in 0..args.dim {
-            let offset = pos * args.dim;
-            hidden[offset + i] = args.wte[token_id * args.dim + i] + args.wpe[offset + i];
-        }
-    }
+    let hidden = initialize_hidden(InitializeHiddenArgs {hidden_size, dim, wpe: &wpe, wte: &wte, token_ids});
 
-
-    for layer_no in 0..args.num_layers {
-
-        let layer = &args.layers[layer_no];
-        let mut all_qkv = vec![0.0f32; all_qkv_size];
-        for pos in 0..seq_len {
-            let offset = pos * args.dim;
-            let mut h = &hidden[offset..offset + args.dim];
-            let qkv = normalize_and_project(NormalizeAndProject {
-                hidden: &mut h.to_vec(), norm_weights: &layer.ln1_w, norm_bias: &layer.ln1_b, projection_weights: &layer.qkv_w, projection_bias: &layer.qkv_b, projection_dim: qkv_size
-            });
-            let qkv_offset = pos * qkv_size;
-            all_qkv[qkv_offset..qkv_offset + qkv_size].copy_from_slice(&qkv);
-        }
+    for layer_no in 0..num_layers {
+        let layer = &layers[layer_no];
+        let all_qkv = fill_all_qkv(FillAllQKVArgs {all_qkv_size, qkv_size, hidden: &hidden, seq_len, dim, layer});
 
         let last_qkv = &all_qkv[last_pos_offset..last_pos_offset + qkv_size];
         let q = extract_q(last_qkv);
@@ -125,4 +131,28 @@ pub fn transformer_multi(args: TransformerMultiArgs) {
             println!("{:.4}", v);
         }
     }
+}
+
+pub struct FillAllQKVArgs<'a> {
+    pub all_qkv_size: usize,
+    pub seq_len: usize,
+    pub dim: usize,
+    pub hidden: &'a Vec<f32>,
+    pub layer: &'a Layer,
+    pub qkv_size: usize,
+}
+pub fn fill_all_qkv(args: FillAllQKVArgs) -> Vec<f32> {
+    let FillAllQKVArgs {all_qkv_size, seq_len, dim, hidden, layer, qkv_size} = args;
+    let mut all_qkv = vec![0.0f32; all_qkv_size];
+    for pos in 0..seq_len {
+        let offset = pos * dim;
+        let mut h = &hidden[offset..offset + dim];
+        let qkv = normalize_and_project(NormalizeAndProject {
+            hidden: &mut h.to_vec(), norm_weights: &layer.ln1_w, norm_bias: &layer.ln1_b, projection_weights: &layer.qkv_w, projection_bias: &layer.qkv_b, projection_dim: qkv_size
+        });
+        let qkv_offset = pos * qkv_size;
+        all_qkv[qkv_offset..qkv_offset + qkv_size].copy_from_slice(&qkv);
+    }
+
+    all_qkv
 }
