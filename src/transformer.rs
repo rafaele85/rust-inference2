@@ -1,6 +1,8 @@
 use crate::activation::gelu;
-use crate::attention::{extract_q, extract_v, multi_head_attention};
+use crate::attention::{cached_attention, extract_qkv, extract_v, multi_head_attention, CachedAttentionArgs, QKV};
+use crate::common_types::{Arrf32, Vecf32};
 use crate::embeddings::combine_embedding_weights;
+use crate::kv_cache::KVCache;
 use crate::linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::logits::{compute_logits, ComputeLogitsArgs};
 use crate::matmul::matmul_transposed;
@@ -96,17 +98,25 @@ pub fn initialize_hidden(args: InitializeHiddenArgs) -> Vec<f32> {
     hidden
 }
 
+fn cache_kv_for_position(qkv: &Arrf32, dim: usize, kv_cache: &mut KVCache, layer_no: usize) {
+    let k = qkv[dim..dim+dim].to_vec();
+    let v = qkv[dim+dim..dim+dim+dim].to_vec();
+    kv_cache.append(layer_no, &k, &v);
+}
 
 pub struct FillAllQKVArgs<'a> {
     pub all_qkv_size: usize,
     pub seq_len: usize,
     pub dim: usize,
-    pub hidden: &'a Vec<f32>,
+    pub hidden: &'a Vecf32,
     pub layer: &'a Layer,
     pub qkv_size: usize,
+    pub kv_cache: &'a mut KVCache,
+    pub layer_no: usize
 }
-pub fn fill_all_qkv(args: FillAllQKVArgs) -> Vec<f32> {
-    let FillAllQKVArgs {all_qkv_size, seq_len, dim, hidden, layer, qkv_size} = args;
+
+pub fn fill_all_qkv(args: FillAllQKVArgs) -> Vecf32 {
+    let FillAllQKVArgs {all_qkv_size, seq_len, dim, hidden, layer, qkv_size, kv_cache, layer_no} = args;
     let mut all_qkv = vec![0.0f32; all_qkv_size];
     for pos in 0..seq_len {
         let offset = pos * dim;
@@ -116,6 +126,7 @@ pub fn fill_all_qkv(args: FillAllQKVArgs) -> Vec<f32> {
         });
         let qkv_offset = pos * qkv_size;
         all_qkv[qkv_offset..qkv_offset + qkv_size].copy_from_slice(&qkv);
+        cache_kv_for_position(&qkv, dim, kv_cache, layer_no);
     }
 
     all_qkv
@@ -147,16 +158,18 @@ pub struct AttentionBlockArgs<'a> {
     pub layer: &'a Layer,
     pub seq_len: usize,
     pub dim: usize,
-    pub n_heads: usize
+    pub n_heads: usize,
+    pub kv_cache: &'a mut KVCache,
+    layer_no: usize
 }
 
 fn apply_attention_block(args: AttentionBlockArgs) {
-    let AttentionBlockArgs {hidden, layer, seq_len, dim, n_heads} = args;
+    let AttentionBlockArgs {hidden, layer, seq_len, dim, n_heads, kv_cache, layer_no} = args;
     let qkv_size = dim * 3;
     let all_qkv_size = seq_len * qkv_size;
 
     let all_qkv = fill_all_qkv(FillAllQKVArgs {
-        all_qkv_size, qkv_size, hidden, seq_len, dim, layer
+        all_qkv_size, qkv_size, hidden, seq_len, dim, layer, kv_cache, layer_no
     });
 
     let attn_raw = multi_head_attention(&all_qkv, seq_len, dim, n_heads);
@@ -204,11 +217,13 @@ pub struct TransformerLayerArgs<'a> {
     pub dim: usize,
     pub n_heads: usize,
     pub ffn_dim: usize,
+    pub kv_cache: &'a mut KVCache,
+    pub layer_no: usize,
 }
 
 pub fn apply_transformer_layer(args: TransformerLayerArgs) {
-    let TransformerLayerArgs {hidden, layer, seq_len, dim, n_heads, ffn_dim} = args;
-    apply_attention_block(AttentionBlockArgs { hidden, layer, seq_len, dim, n_heads });
+    let TransformerLayerArgs {hidden, layer, seq_len, dim, n_heads, ffn_dim, kv_cache, layer_no} = args;
+    apply_attention_block(AttentionBlockArgs { hidden, layer, seq_len, dim, n_heads, kv_cache, layer_no });
 
     for pos in 0..seq_len {
         apply_ffn_to_position(FFNForPositionArgs { hidden, layer, pos, dim, ffn_dim });
@@ -230,10 +245,12 @@ pub struct TransformerMultiArgs<'a> {
     pub n_heads: usize,
     pub ffn_dim: usize,
     pub vocab_size: usize,
+    pub kv_cache: &'a mut KVCache,
 }
 pub fn transformer_multi(args: TransformerMultiArgs) -> usize {
     let TransformerMultiArgs {
-        n_heads, dim, num_layers, layers, ln_f_w, ln_f_b, wte, wpe,  token_ids, ffn_dim, vocab_size, ..
+        n_heads, dim, num_layers, layers, ln_f_w, ln_f_b,
+        wte, wpe,  token_ids, ffn_dim, vocab_size, kv_cache
     } = args;
     let seq_len = token_ids.len();
     let hidden_size = seq_len * dim;
@@ -246,12 +263,111 @@ pub fn transformer_multi(args: TransformerMultiArgs) -> usize {
         let layer = &layers[layer_no];
 
         apply_transformer_layer(TransformerLayerArgs {
-           hidden: &mut hidden, layer, seq_len, dim, n_heads, ffn_dim
+           hidden: &mut hidden, layer, seq_len, dim, n_heads, ffn_dim, kv_cache, layer_no
         });
 
     }
 
     let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte, ln_f_w, ln_f_b, last_pos, dim, vocab_size});
-    
+
+    top_id
+}
+
+
+pub struct GenerateTokenSingleLayerArgs<'a> {
+    pub layer_no: usize,
+    pub qkv_size: usize,
+    pub n_heads: usize,
+    pub dim: usize,
+    pub hidden: &'a mut Vecf32,
+    pub layer: &'a Layer,
+    pub kv_cache: &'a mut KVCache,
+    pub head_dim: usize,
+    pub ffn_dim: usize,
+}
+
+pub fn generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
+    let GenerateTokenSingleLayerArgs {
+        hidden, layer, layer_no, qkv_size,
+        kv_cache, n_heads, dim, head_dim, ffn_dim
+    } = args;
+
+    let qkv = normalize_and_project(NormalizeAndProject {
+        hidden, norm_weights: &layer.ln1_w, norm_bias: &layer.ln1_b,
+        projection_weights: &layer.qkv_w, projection_bias: &layer.qkv_b, projection_dim: qkv_size
+    });
+
+    let QKV {q, k, v} = extract_qkv(&qkv);
+
+    kv_cache.append(layer_no, &k, &v);
+
+    let k_cache = &kv_cache.k[layer_no];
+    let v_cache = &kv_cache.v[layer_no];
+    let cache_len = k_cache.len();
+    let attn_raw = cached_attention( CachedAttentionArgs {
+        q: &q,
+        k_cache,
+        v_cache,
+        cache_len,
+        n_heads,
+        dim,
+        head_dim,
+    });
+
+    project_and_residual(ProjectAndResidualArgs {
+        activation_weights: &attn_raw, projection_weights: &layer.proj_w, projection_bias: &layer.proj_b, dim, hidden
+    });
+
+    let ffn_up = normalize_and_project(NormalizeAndProject {
+       hidden, norm_weights: &layer.ln2_w, norm_bias: &layer.ln2_b, projection_weights: &layer.ffn_up_w, projection_bias: &layer.ffn_up_b, projection_dim: ffn_dim
+    });
+
+    let ffn_act = gelu(&ffn_up);
+
+    project_and_residual(ProjectAndResidualArgs {
+        activation_weights: &ffn_act, projection_weights: &layer.ffn_down_w, projection_bias: &layer.ffn_down_b, dim, hidden
+    });
+}
+
+pub struct GenerateTokenArgs<'a> {
+    pub token_id: usize,
+    pub dim: usize,
+    pub position: usize,
+    pub wte: &'a Vecf32,
+    pub wpe: &'a Vecf32,
+    pub num_layers: usize,
+    pub layers: &'a Vec<Layer>,
+    pub n_heads: usize,
+    pub ffn_dim: usize,
+    pub seq_len: usize,
+    pub kv_cache: &'a mut KVCache,
+    pub head_dim: usize,
+    pub ln_f_w: &'a Vecf32,
+    pub ln_f_b: &'a Vecf32,
+    pub vocab_size: usize,
+}
+pub fn generate_token(args: GenerateTokenArgs) -> usize {
+    let GenerateTokenArgs {
+        token_id, dim, position, wte, wpe, num_layers, layers,
+        n_heads, ffn_dim, seq_len, kv_cache, head_dim, ln_f_w, ln_f_b,
+        vocab_size,
+    } = args;
+
+    let wte_start = token_id * dim;
+    let wpe_start = position * dim;
+    let wte_row = &wte[wte_start..wte_start + dim];
+    let wpe_row = &wpe[wpe_start..wpe_start + dim];
+    let qkv_size = dim * 3;
+
+    let mut hidden = combine_embedding_weights(wte_row, wpe_row);
+
+    for layer_no in 0..num_layers {
+        let layer = &layers[layer_no];
+        generate_token_single_layer(GenerateTokenSingleLayerArgs {
+            layer_no, layer, qkv_size, hidden: &mut hidden, n_heads, ffn_dim, kv_cache, dim, head_dim
+        });
+    }
+    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte, ln_f_w, ln_f_b, last_pos: 0, dim, vocab_size});
+
     top_id
 }

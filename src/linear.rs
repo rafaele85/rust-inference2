@@ -1,3 +1,4 @@
+use crate::common_types::Vecf32;
 use crate::matmul::matmul;
 use crate::norm::layer_norm;
 
@@ -43,4 +44,36 @@ pub fn normalize_and_project(args: NormalizeAndProject) -> Vec<f32> {
     let result = linear_projection(&mut normalized, args.projection_weights, args.projection_bias, args.projection_dim);
 
     result
+}
+
+pub struct ScaleAndAddArgs<'a> {
+    pub output: &'a mut Vecf32,
+    pub source: &'a Vecf32,
+    pub scale: f32,
+    pub start_offset: usize,
+    pub num_iterations: usize,
+}
+pub fn scale_and_add(args: ScaleAndAddArgs) {
+    let ScaleAndAddArgs {output, source, scale, start_offset, num_iterations} = args;
+    for i in 0..num_iterations {
+        output[start_offset + i] += scale * source[start_offset + i];
+    }
+}
+
+pub struct ScaleAndAddMultiArgs<'a> {
+    pub output: &'a mut Vecf32,
+    pub sources: &'a Vec<Vecf32>,
+    pub scales: &'a Vecf32,
+    pub start_offset: usize,
+    pub num_iterations: usize,
+    pub seq_len: usize,
+}
+pub fn scale_and_add_multi(args: ScaleAndAddMultiArgs) {
+    let ScaleAndAddMultiArgs {seq_len, scales, sources, output, num_iterations, start_offset} = args;
+    for i in 0..seq_len {
+        let scale = scales[i];
+        let source = &sources[i];
+        scale_and_add(ScaleAndAddArgs {output, source, num_iterations, start_offset, scale});
+    }
+
 }
