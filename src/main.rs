@@ -10,11 +10,8 @@ mod logits;
 mod vocab;
 
 use std::io::{Read, Seek};
-use crate::activation::softmax;
-use crate::attention::multi_head_attention;
-use crate::linear::linear_projection;
 use crate::safetensors::{load_all_layers, SafeTensor};
-use crate::transformer::{fill_all_qkv, initialize_hidden, transformer_multi, FillAllQKVArgs, InitializeHiddenArgs, TransformerMultiArgs};
+use crate::transformer::{transformer_multi, TransformerMultiArgs};
 use crate::vocab::Vocab;
 
 fn main() {
@@ -24,7 +21,10 @@ fn main() {
     let dim = 768;
     let n_heads = 12;
     let ffn_dim = dim * 4;
-    let vocab_size = 50257;
+
+    let vocab = Vocab::load("model/vocab.json");
+
+    let vocab_size = vocab.size();
 
 
     let mut model = SafeTensor::open("model/model.safetensors");
@@ -33,22 +33,17 @@ fn main() {
     let ln_f_w = model.load_tensor("ln_f.weight");
     let ln_f_b = model.load_tensor("ln_f.bias");
     let layers = load_all_layers(&mut model, num_layers);
-    let vocab = Vocab::load("model/vocab.json");
 
+    let mut token_ids: Vec<usize> = vocab.encode("The capital of France is");
 
-    let mut token_ids: Vec<usize> = vec![464, 3139, 286, 4881, 318];
-
-    for id in &token_ids {
-        println!("{}", vocab.decode(*id));
-    }
-
-    for i in 0..5 {
+    for _ in 0..5 {
         let output_id = transformer_multi(TransformerMultiArgs {
             token_ids: &token_ids, layers: &layers, num_layers, ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, wte: &wte, wpe: &wpe, dim, n_heads, vocab_size, ffn_dim
         });
-
-        println!("{}", vocab.decode(output_id));
-
         token_ids.push(output_id);
     }
+
+    let output = token_ids.iter().map(|id| vocab.decode(*id)).collect::<Vec<_>>();
+    let text = output.join("");
+    println!("{}", text);
 }
