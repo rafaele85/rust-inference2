@@ -231,7 +231,7 @@ pub struct TransformerMultiArgs<'a> {
     pub ffn_dim: usize,
     pub vocab_size: usize,
 }
-pub fn transformer_multi(args: TransformerMultiArgs) {
+pub fn transformer_multi(args: TransformerMultiArgs) -> usize {
     let TransformerMultiArgs {
         n_heads, dim, num_layers, layers, ln_f_w, ln_f_b, wte, wpe,  token_ids, ffn_dim, vocab_size, ..
     } = args;
@@ -252,8 +252,6 @@ pub fn transformer_multi(args: TransformerMultiArgs) {
     }
 
     let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte, ln_f_w, ln_f_b, last_pos, dim, vocab_size});
-
-
-
-    println!("{}", top_id);
+    
+    top_id
 }

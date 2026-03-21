@@ -1,0 +1,14 @@
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model = AutoModelForCausalLM.from_pretrained("./model", torch_dtype=torch.float32)
+tokenizer = AutoTokenizer.from_pretrained("./model")
+model.eval()
+
+input_ids = torch.tensor([[464, 3139, 286, 4881, 318]])
+with torch.no_grad():
+    output = model(input_ids)
+    logits = output.logits
+
+top_id = torch.argmax(logits[0][-1]).item()
+print(tokenizer.decode([top_id]))
