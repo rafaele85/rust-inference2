@@ -36,14 +36,19 @@ fn main() {
     let vocab = Vocab::load("model/vocab.json");
 
 
-    let token_ids: Vec<usize> = vec![464, 3139, 286, 4881, 318];
-    for &token_id in &token_ids {
-        println!("input token_id: {} {}", token_id, vocab.decode(token_id));
+    let mut token_ids: Vec<usize> = vec![464, 3139, 286, 4881, 318];
+
+    for id in &token_ids {
+        println!("{}", vocab.decode(*id));
     }
 
-    let output_id = transformer_multi(TransformerMultiArgs {
-        token_ids: &token_ids, layers: &layers, num_layers, ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, wte: &wte, wpe: &wpe, dim, n_heads, vocab_size, ffn_dim
-    });
+    for i in 0..5 {
+        let output_id = transformer_multi(TransformerMultiArgs {
+            token_ids: &token_ids, layers: &layers, num_layers, ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, wte: &wte, wpe: &wpe, dim, n_heads, vocab_size, ffn_dim
+        });
 
-    println!("output token_id: {} {}", output_id, vocab.decode(output_id));
+        println!("{}", vocab.decode(output_id));
+
+        token_ids.push(output_id);
+    }
 }

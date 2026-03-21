@@ -19,7 +19,8 @@ impl Vocab {
         Vocab { id_to_token }
     }
 
-    pub fn decode(&self, token_id: usize) -> &str {
-        &self.id_to_token[&token_id]
+    pub fn decode(&self, token_id: usize) -> String {
+        let token = &self.id_to_token[&token_id];
+        token.replace("Ġ", " ")
     }
 }
