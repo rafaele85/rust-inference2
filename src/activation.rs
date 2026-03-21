@@ -14,3 +14,12 @@ pub fn gelu(input: &[f32]) -> Vec<f32> {
         .map(|&x| get_gelu_scalar(x))
         .collect()
 }
+
+pub fn softmax(input: &[f32]) -> Vec<f32> {
+    let max_val = input.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let exps: Vec<f32> = input.iter().map(|&x| (x - max_val).exp()).collect();
+    let sum: f32 = exps.iter().sum();
+    let result = exps.iter().map(|&x| x / sum).collect();
+
+    result
+}
