@@ -23,3 +23,17 @@ pub fn softmax(input: &[f32]) -> Vec<f32> {
 
     result
 }
+
+pub fn argmax(values: &[f32]) -> usize {
+    let mut max_idx = 0;
+    let mut max_val: f32 = f32::NEG_INFINITY;
+
+    for (i, &v) in values.iter().enumerate() {
+        if v > max_val {
+            max_val = v;
+            max_idx = i;
+        }
+    }
+
+    max_idx
+}

@@ -10,18 +10,18 @@ pub fn linear_projection(input: &[f32], weight: &[f32], bias: &[f32], out_dim: u
     output
 }
 
-pub fn add_to_vector(input: &mut Vec<f32>, vector_to_add: &[f32]) -> () {
+pub fn add_to_vector(input: &mut [f32], vector_to_add: &[f32]) -> () {
     for i in 0..input.len() {
         input[i] += vector_to_add[i];
     }
 }
 
 pub struct ProjectAndResidualArgs<'a> {
-    pub hidden: &'a mut Vec<f32>,
-    pub activation_weights: &'a Vec<f32>,
-    pub projection_weights: &'a Vec<f32>,
-    pub projection_bias: &'a Vec<f32>,
+    pub activation_weights: &'a [f32],
+    pub projection_weights: &'a [f32],
+    pub projection_bias: &'a [f32],
     pub dim: usize,
+    pub hidden: &'a mut [f32],
 }
 
 pub fn project_and_residual(args: ProjectAndResidualArgs) -> () {
@@ -30,7 +30,7 @@ pub fn project_and_residual(args: ProjectAndResidualArgs) -> () {
 }
 
 pub struct NormalizeAndProject<'a> {
-    pub hidden: &'a mut Vec<f32>,
+    pub hidden: &'a mut [f32],
     pub norm_weights: &'a Vec<f32>,
     pub norm_bias: &'a Vec<f32>,
     pub projection_weights: &'a Vec<f32>,
