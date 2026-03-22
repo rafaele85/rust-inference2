@@ -44,7 +44,7 @@ impl Vocab {
                     break;
                 }
             }
-            if (!found) {
+            if !found {
                 panic!("Can not tokenize {}", str);
             }
         }

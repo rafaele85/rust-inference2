@@ -1,9 +1,9 @@
-use crate::common_types::{Arrf32, Vecf32};
+use crate::common_types::{Arrf32, Vecf32, Weight};
 use crate::gpu::Gpu;
 use crate::matmul::matmul;
 use crate::norm::layer_norm;
 
-pub fn linear_projection(input: &[f32], weight: &[f32], bias: &[f32], out_dim: usize, gpu: &Gpu) -> Vec<f32> {
+pub fn linear_projection(input: &[f32], weight: &Weight, bias: &[f32], out_dim: usize, gpu: &Gpu) -> Vec<f32> {
     let mut output = matmul(input, weight, out_dim, gpu);
     for i in 0..out_dim {
         output[i] += bias[i];
@@ -20,7 +20,7 @@ pub fn add_to_vector(input: &mut [f32], vector_to_add: &[f32]) -> () {
 
 pub struct ProjectAndResidualArgs<'a> {
     pub activation_weights: &'a [f32],
-    pub projection_weights: &'a [f32],
+    pub projection_weights: &'a Weight,
     pub projection_bias: &'a [f32],
     pub dim: usize,
     pub hidden: &'a mut [f32],
@@ -36,7 +36,7 @@ pub struct NormalizeAndProject<'a> {
     pub hidden: &'a Arrf32,
     pub norm_weights: &'a Vecf32,
     pub norm_bias: &'a Vecf32,
-    pub projection_weights: &'a Vecf32,
+    pub projection_weights: &'a Weight,
     pub projection_bias: &'a Vecf32,
     pub projection_dim: usize,
     pub gpu: &'a Gpu

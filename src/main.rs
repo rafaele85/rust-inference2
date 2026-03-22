@@ -36,10 +36,11 @@ fn main() {
 
     let mut model = SafeTensor::open("model/model.safetensors");
     let wte = model.load_tensor("wte.weight");
+    let wte_gpu = gpu.upload(&wte);
     let wpe = model.load_tensor("wpe.weight");
     let ln_f_w = model.load_tensor("ln_f.weight");
     let ln_f_b = model.load_tensor("ln_f.bias");
-    let layers = load_all_layers(&mut model, num_layers);
+    let layers = load_all_layers(&mut model, num_layers, &gpu);
 
     println!("Begin generation");
 
@@ -53,7 +54,7 @@ fn main() {
     for pos in 0..seq_len {
         let id = token_ids[pos];
         let top_id = generate_token(GenerateTokenArgs {
-            token_id: id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wpe: &wpe,
+            token_id: id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wte_gpu: &wte_gpu, wpe: &wpe,
             ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
         });
         first_generated = top_id;
@@ -65,7 +66,7 @@ fn main() {
         let pos = seq_len - 1;
         let last_id = *token_ids.last().unwrap();
         let top_id = generate_token(GenerateTokenArgs {
-            token_id: last_id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wpe: &wpe,
+            token_id: last_id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wte_gpu: &wte_gpu, wpe: &wpe,
             ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
         });
         token_ids.push(top_id);

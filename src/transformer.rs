@@ -1,19 +1,12 @@
 use crate::activation::gelu;
 use crate::attention::{cached_attention, extract_qkv, CachedAttentionArgs, QKV};
-use crate::common_types::{Arrf32, Vecf32};
+use crate::common_types::{Vecf32, Weight};
 use crate::embeddings::combine_embedding_weights;
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
 use crate::linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::logits::{compute_logits, ComputeLogitsArgs};
 use crate::safetensors::Layer;
-
-
-fn cache_kv_for_position(qkv: &Arrf32, dim: usize, kv_cache: &mut KVCache, layer_no: usize) {
-    let k = qkv[dim..dim+dim].to_vec();
-    let v = qkv[dim+dim..dim+dim+dim].to_vec();
-    kv_cache.append(layer_no, k, v);
-}
 
 
 pub struct GenerateTokenSingleLayerArgs<'a> {
@@ -76,6 +69,7 @@ pub struct GenerateTokenArgs<'a> {
     pub token_id: usize,
     pub dim: usize,
     pub position: usize,
+    pub wte_gpu: &'a Weight,
     pub wte: &'a Vecf32,
     pub wpe: &'a Vecf32,
     pub num_layers: usize,
@@ -92,7 +86,7 @@ pub struct GenerateTokenArgs<'a> {
 pub fn generate_token(args: GenerateTokenArgs) -> usize {
     let GenerateTokenArgs {
         token_id, dim, position, wte, wpe, num_layers, layers,
-        n_heads, ffn_dim, kv_cache, head_dim, ln_f_w, ln_f_b,
+        n_heads, ffn_dim, kv_cache, head_dim, ln_f_w, ln_f_b, wte_gpu,
         vocab_size, gpu
     } = args;
 
@@ -110,7 +104,7 @@ pub fn generate_token(args: GenerateTokenArgs) -> usize {
             layer_no, layer, qkv_size, hidden: &mut hidden, n_heads, ffn_dim, kv_cache, dim, head_dim, gpu
         });
     }
-    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte, ln_f_w, ln_f_b, last_pos: 0, dim, vocab_size, gpu});
+    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte: wte_gpu, ln_f_w, ln_f_b, last_pos: 0, dim, vocab_size, gpu});
 
     top_id
 }

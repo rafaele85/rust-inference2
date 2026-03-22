@@ -1,4 +1,5 @@
 use crate::activation::argmax;
+use crate::common_types::Weight;
 use crate::gpu::Gpu;
 use crate::matmul::matmul_transposed;
 use crate::norm::layer_norm;
@@ -7,7 +8,7 @@ pub struct ComputeLogitsArgs<'a> {
     pub hidden: &'a [f32],
     pub ln_f_w: &'a [f32],
     pub ln_f_b: &'a [f32],
-    pub wte: &'a [f32],
+    pub wte: &'a Weight,
     pub last_pos: usize,
     pub dim: usize,
     pub vocab_size: usize,

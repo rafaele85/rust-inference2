@@ -2,8 +2,10 @@ use std::sync::Arc;
 use cudarc::cublas::CudaBlas;
 use cudarc::cublas::result::sgemm;
 use cudarc::cublas::sys::cublasOperation_t::{CUBLAS_OP_N, CUBLAS_OP_T};
-use cudarc::driver::{CudaDevice, DevicePtr, DevicePtrMut};
+use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr, DevicePtrMut};
 use crate::common_types::{Arrf32, Vecf32};
+
+pub type CudaArrf32 = CudaSlice<f32>;
 
 pub struct Gpu {
     pub dev: Arc<CudaDevice>,
@@ -17,9 +19,8 @@ impl Gpu {
         Gpu { dev, blas }
     }
 
-    fn sgemm(&self, input: &Arrf32, weight: &Arrf32, in_dim: usize, out_dim: usize, transpose: bool) -> Vecf32 {
+    fn sgemm(&self, input: &Arrf32, d_weight: &CudaArrf32, in_dim: usize, out_dim: usize, transpose: bool) -> Vecf32 {
         let d_input = self.dev.htod_sync_copy(input).unwrap();
-        let d_weight = self.dev.htod_sync_copy(weight).unwrap();
         let mut d_output = self.dev.alloc_zeros::<f32>(out_dim).unwrap();
 
         let handle = *self.blas.handle();
@@ -51,11 +52,15 @@ impl Gpu {
         result
     }
 
-    pub fn matmul(&self, input: &[f32], weight: &[f32], in_dim: usize, out_dim: usize) -> Vec<f32> {
+    pub fn matmul(&self, input: &Arrf32, weight: &CudaArrf32, in_dim: usize, out_dim: usize) -> Vec<f32> {
         self.sgemm(input, weight, in_dim, out_dim, false)
     }
 
-    pub fn matmul_transposed(&self, input: &[f32], weight: &[f32], in_dim: usize, out_dim: usize) -> Vec<f32> {
+    pub fn matmul_transposed(&self, input: &Arrf32, weight: &CudaArrf32, in_dim: usize, out_dim: usize) -> Vec<f32> {
         self.sgemm(input, weight, in_dim, out_dim, true)
+    }
+
+    pub fn upload(&self, data: &Arrf32) -> CudaSlice<f32> {
+        self.dev.htod_sync_copy(data).unwrap()
     }
 }

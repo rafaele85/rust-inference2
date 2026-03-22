@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::io::SeekFrom::Start;
+use crate::common_types::Weight;
+use crate::gpu::Gpu;
 
 struct TensorEntry {
     offsets: [u64; 2],
@@ -72,19 +74,19 @@ fn load_weight_bias(model: &mut SafeTensor, name: &str, layer: usize) -> (Vec<f3
 pub struct Layer {
     pub ln1_w: Vec<f32>,
     pub ln1_b: Vec<f32>,
-    pub proj_w: Vec<f32>,
+    pub proj_w: Weight,
     pub proj_b: Vec<f32>,
     pub ln2_w: Vec<f32>,
     pub ln2_b: Vec<f32>,
-    pub ffn_up_w: Vec<f32>,
+    pub ffn_up_w: Weight,
     pub ffn_up_b: Vec<f32>,
-    pub ffn_down_w: Vec<f32>,
+    pub ffn_down_w: Weight,
     pub ffn_down_b: Vec<f32>,
-    pub qkv_w: Vec<f32>,
+    pub qkv_w: Weight,
     pub qkv_b: Vec<f32>,
 }
 
-pub fn load_layer(model: &mut SafeTensor, layer: usize) -> Layer {
+pub fn load_layer(model: &mut SafeTensor, layer: usize, gpu: &Gpu) -> Layer {
     let (ln1_w, ln1_b) = load_weight_bias(model, "ln_1", layer);
     let (qkv_w, qkv_b) = load_weight_bias(model, "attn.c_attn", layer);
     let (proj_w, proj_b) = load_weight_bias(model, "attn.c_proj", layer);
@@ -92,14 +94,14 @@ pub fn load_layer(model: &mut SafeTensor, layer: usize) -> Layer {
     let (ffn_up_w, ffn_up_b) = load_weight_bias(model, "mlp.c_fc", layer);
     let (ffn_down_w, ffn_down_b) = load_weight_bias(model, "mlp.c_proj", layer);
 
-    Layer { ln1_w, ln1_b, qkv_w, qkv_b, proj_w, proj_b, ln2_w, ln2_b, ffn_up_w, ffn_up_b, ffn_down_w, ffn_down_b }
+    Layer { ln1_w, ln1_b, qkv_w: gpu.upload(&qkv_w), qkv_b, proj_w: gpu.upload(&proj_w), proj_b, ln2_w, ln2_b, ffn_up_w: gpu.upload(&ffn_up_w), ffn_up_b, ffn_down_w: gpu.upload(&ffn_down_w), ffn_down_b }
 }
 
-pub fn load_all_layers(model: &mut SafeTensor, nlayers: usize) -> Vec<Layer> {
+pub fn load_all_layers(model: &mut SafeTensor, nlayers: usize, gpu: &Gpu) -> Vec<Layer> {
 
     let mut layers = Vec::with_capacity(nlayers);
     for i in 0..nlayers {
-        let layer = load_layer(model, i);
+        let layer = load_layer(model, i, gpu);
         layers.push(layer);
     }
 
