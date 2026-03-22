@@ -10,14 +10,18 @@ mod logits;
 mod vocab;
 mod kv_cache;
 mod common_types;
+mod gpu;
 
-use std::io::{Read, Seek};
+use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
 use crate::safetensors::{load_all_layers, SafeTensor};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
 
 fn main() {
+
+    let gpu = Gpu::new(0);
+    println!("Gpu initialized");
 
     let num_layers = 12;
 
@@ -50,7 +54,7 @@ fn main() {
         let id = token_ids[pos];
         let top_id = generate_token(GenerateTokenArgs {
             token_id: id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wpe: &wpe,
-            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, seq_len
+            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
         });
         first_generated = top_id;
     }
@@ -62,7 +66,7 @@ fn main() {
         let last_id = *token_ids.last().unwrap();
         let top_id = generate_token(GenerateTokenArgs {
             token_id: last_id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wpe: &wpe,
-            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, seq_len
+            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
         });
         token_ids.push(top_id);
     }

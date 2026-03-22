@@ -1,9 +1,10 @@
 use crate::common_types::{Arrf32, Vecf32};
+use crate::gpu::Gpu;
 use crate::matmul::matmul;
 use crate::norm::layer_norm;
 
-pub fn linear_projection(input: &[f32], weight: &[f32], bias: &[f32], out_dim: usize) -> Vec<f32> {
-    let mut output = matmul(input, weight, out_dim);
+pub fn linear_projection(input: &[f32], weight: &[f32], bias: &[f32], out_dim: usize, gpu: &Gpu) -> Vec<f32> {
+    let mut output = matmul(input, weight, out_dim, gpu);
     for i in 0..out_dim {
         output[i] += bias[i];
     }
@@ -23,10 +24,11 @@ pub struct ProjectAndResidualArgs<'a> {
     pub projection_bias: &'a [f32],
     pub dim: usize,
     pub hidden: &'a mut [f32],
+    pub gpu: &'a Gpu,
 }
 
 pub fn project_and_residual(args: ProjectAndResidualArgs) -> () {
-    let projected = linear_projection(&args.activation_weights, &args.projection_weights, &args.projection_bias, args.dim);
+    let projected = linear_projection(&args.activation_weights, &args.projection_weights, &args.projection_bias, args.dim, args.gpu);
     add_to_vector(args.hidden, &projected);
 }
 
@@ -37,11 +39,12 @@ pub struct NormalizeAndProject<'a> {
     pub projection_weights: &'a Vecf32,
     pub projection_bias: &'a Vecf32,
     pub projection_dim: usize,
+    pub gpu: &'a Gpu
 }
 
 pub fn normalize_and_project(args: NormalizeAndProject) -> Vecf32 {
     let mut normalized = layer_norm(args.hidden, args.norm_weights, args.norm_bias);
-    let result = linear_projection(&mut normalized, args.projection_weights, args.projection_bias, args.projection_dim);
+    let result = linear_projection(&mut normalized, args.projection_weights, args.projection_bias, args.projection_dim, args.gpu);
 
     result
 }

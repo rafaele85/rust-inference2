@@ -38,7 +38,7 @@ impl SafeTensor {
             entries.insert(name.clone(), tensor_entry);
         }
 
-        let data_offset = 8 + header_len as u64;
+        let data_offset = 8 + header_len;
         SafeTensor { file, data_offset, entries }
     }
 

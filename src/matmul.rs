@@ -1,25 +1,10 @@
-pub fn matmul(input: &[f32], weight: &[f32], out_dim: usize) -> Vec<f32> {
-    let in_dim = input.len();
-    let mut output = vec![0.0f32; out_dim];
-    for i in 0..in_dim {
-        let x = input[i];
-        for j in 0..out_dim {
-            output[j] += x * weight[i * out_dim + j];
-        }
-    }
+use crate::common_types::{Arrf32, Vecf32};
+use crate::gpu::Gpu;
 
-    output
+pub fn matmul(input: &Arrf32, weight: &Arrf32, out_dim: usize, gpu: &Gpu) -> Vecf32 {
+    gpu.matmul(input, weight, input.len(), out_dim)
 }
 
-pub fn matmul_transposed(input: &[f32], weight: &[f32], out_dim: usize) -> Vec<f32> {
-    let in_dim = input.len();
-    let mut output = vec![0.0f32; out_dim];
-    for j in 0..out_dim {
-        let mut sum = 0.0f32;
-        for i in 0..in_dim {
-            sum += input[i] * weight[j * in_dim + i];
-        }
-        output[j] = sum;
-    }
-    output
+pub fn matmul_transposed(input: &Arrf32, weight: &Arrf32, out_dim: usize, gpu: &Gpu) -> Vecf32 {
+    gpu.matmul_transposed(input, weight, input.len(), out_dim)
 }
