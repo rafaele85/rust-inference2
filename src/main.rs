@@ -1,4 +1,3 @@
-mod safetensors;
 mod norm;
 mod embeddings;
 mod matmul;
@@ -12,6 +11,7 @@ mod kv_cache;
 mod common_types;
 mod gpu;
 mod rope;
+mod model;
 
 use crate::activation::silu;
 use crate::gpu::Gpu;
@@ -19,7 +19,8 @@ use crate::kv_cache::KVCache;
 use crate::matmul::matmul_transposed;
 use crate::norm::rms_norm;
 use crate::rope::{apply_rope, compute_rope_freqs};
-use crate::safetensors::{load_all_layers, SafeTensor};
+use model::safetensors::SafeTensor;
+use crate::model::gpt2::{GPT2Model};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
 
@@ -75,13 +76,8 @@ fn main() {
     let vocab_size = vocab.size();
 
 
-    let mut model = SafeTensor::open("model/model.safetensors");
-    let wte = model.load_tensor("wte.weight");
-    let wte_gpu = gpu.upload(&wte);
-    let wpe = model.load_tensor("wpe.weight");
-    let ln_f_w = model.load_tensor("ln_f.weight");
-    let ln_f_b = model.load_tensor("ln_f.bias");
-    let layers = load_all_layers(&mut model, num_layers, &gpu);
+    let mut safetensors = SafeTensor::open("model/model.safetensors");
+    let gpt2_model = GPT2Model::new(&mut safetensors, &gpu, num_layers);
 
     println!("Begin generation");
 
@@ -95,8 +91,8 @@ fn main() {
     for pos in 0..seq_len {
         let id = token_ids[pos];
         let top_id = generate_token(GenerateTokenArgs {
-            token_id: id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wte_gpu: &wte_gpu, wpe: &wpe,
-            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
+            token_id: id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers,
+            kv_cache: &mut kv_cache, head_dim, gpu: &gpu, gpt2_model: &gpt2_model
         });
         first_generated = top_id;
     }
@@ -107,8 +103,8 @@ fn main() {
         let pos = seq_len - 1;
         let last_id = *token_ids.last().unwrap();
         let top_id = generate_token(GenerateTokenArgs {
-            token_id: last_id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers, wte: &wte, wte_gpu: &wte_gpu, wpe: &wpe,
-            ln_f_w: &ln_f_w, ln_f_b: &ln_f_b, layers: &layers, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
+            token_id: last_id, position: pos, dim, n_heads, ffn_dim, vocab_size, num_layers,
+            gpt2_model: &gpt2_model, kv_cache: &mut kv_cache, head_dim, gpu: &gpu
         });
         token_ids.push(top_id);
     }

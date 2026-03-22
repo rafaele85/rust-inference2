@@ -1,13 +1,12 @@
 use crate::activation::gelu;
 use crate::attention::{cached_attention, extract_qkv, CachedAttentionArgs, QKV};
-use crate::common_types::{Vecf32, Weight};
+use crate::common_types::{Vecf32};
 use crate::embeddings::combine_embedding_weights;
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
 use crate::linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::logits::{compute_logits, ComputeLogitsArgs};
-use crate::safetensors::Layer;
-
+use crate::model::gpt2::{GPT2Layer, GPT2Model};
 
 pub struct GenerateTokenSingleLayerArgs<'a> {
     pub layer_no: usize,
@@ -15,7 +14,7 @@ pub struct GenerateTokenSingleLayerArgs<'a> {
     pub n_heads: usize,
     pub dim: usize,
     pub hidden: &'a mut Vecf32,
-    pub layer: &'a Layer,
+    pub layer: &'a GPT2Layer,
     pub kv_cache: &'a mut KVCache,
     pub head_dim: usize,
     pub ffn_dim: usize,
@@ -69,42 +68,37 @@ pub struct GenerateTokenArgs<'a> {
     pub token_id: usize,
     pub dim: usize,
     pub position: usize,
-    pub wte_gpu: &'a Weight,
-    pub wte: &'a Vecf32,
-    pub wpe: &'a Vecf32,
     pub num_layers: usize,
-    pub layers: &'a Vec<Layer>,
     pub n_heads: usize,
     pub ffn_dim: usize,
     pub kv_cache: &'a mut KVCache,
     pub head_dim: usize,
-    pub ln_f_w: &'a Vecf32,
-    pub ln_f_b: &'a Vecf32,
     pub vocab_size: usize,
-    pub gpu: &'a Gpu
+    pub gpu: &'a Gpu,
+    pub gpt2_model: &'a GPT2Model
 }
 pub fn generate_token(args: GenerateTokenArgs) -> usize {
     let GenerateTokenArgs {
-        token_id, dim, position, wte, wpe, num_layers, layers,
-        n_heads, ffn_dim, kv_cache, head_dim, ln_f_w, ln_f_b, wte_gpu,
-        vocab_size, gpu
+        token_id, dim, position,num_layers,
+        n_heads, ffn_dim, kv_cache, head_dim,
+        vocab_size, gpu, gpt2_model
     } = args;
 
     let wte_start = token_id * dim;
     let wpe_start = position * dim;
-    let wte_row = &wte[wte_start..wte_start + dim];
-    let wpe_row = &wpe[wpe_start..wpe_start + dim];
+    let wte_row = &gpt2_model.wte[wte_start..wte_start + dim];
+    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + dim];
     let qkv_size = dim * 3;
 
     let mut hidden = combine_embedding_weights(wte_row, wpe_row);
 
     for layer_no in 0..num_layers {
-        let layer = &layers[layer_no];
+        let layer = &gpt2_model.layers[layer_no];
         generate_token_single_layer(GenerateTokenSingleLayerArgs {
             layer_no, layer, qkv_size, hidden: &mut hidden, n_heads, ffn_dim, kv_cache, dim, head_dim, gpu
         });
     }
-    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, wte: wte_gpu, ln_f_w, ln_f_b, last_pos: 0, dim, vocab_size, gpu});
+    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim, vocab_size, gpu});
 
     top_id
 }
