@@ -7,9 +7,9 @@ pub struct Vocab {
 }
 
 impl Vocab {
-    pub fn load(path: &str) -> Self {
+    pub fn load(path: &String) -> Self {
 
-        let content = fs::read_to_string(path).expect("Failed to read file");
+        let content = fs::read_to_string(path).expect(&format!("Failed to read file {}", &path ));
         let token_to_id: HashMap<String, usize> = serde_json::from_str(&content).expect("Failed to parse file");
 
         let mut id_to_token = HashMap::new();

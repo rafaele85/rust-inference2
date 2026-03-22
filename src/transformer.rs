@@ -66,39 +66,36 @@ pub fn generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
 
 pub struct GenerateTokenArgs<'a> {
     pub token_id: usize,
-    pub dim: usize,
     pub position: usize,
-    pub num_layers: usize,
-    pub n_heads: usize,
-    pub ffn_dim: usize,
     pub kv_cache: &'a mut KVCache,
-    pub head_dim: usize,
-    pub vocab_size: usize,
     pub gpu: &'a Gpu,
     pub gpt2_model: &'a GPT2Model
 }
 pub fn generate_token(args: GenerateTokenArgs) -> usize {
     let GenerateTokenArgs {
-        token_id, dim, position,num_layers,
-        n_heads, ffn_dim, kv_cache, head_dim,
-        vocab_size, gpu, gpt2_model
+        token_id, position,
+        kv_cache,
+        gpu, gpt2_model
     } = args;
 
-    let wte_start = token_id * dim;
-    let wpe_start = position * dim;
-    let wte_row = &gpt2_model.wte[wte_start..wte_start + dim];
-    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + dim];
-    let qkv_size = dim * 3;
+    let wte_start = token_id * gpt2_model.dim;
+    let wpe_start = position * gpt2_model.dim;
+    let wte_row = &gpt2_model.wte[wte_start..wte_start + gpt2_model.dim];
+    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + gpt2_model.dim];
+    let qkv_size = gpt2_model.dim * 3;
 
     let mut hidden = combine_embedding_weights(wte_row, wpe_row);
 
-    for layer_no in 0..num_layers {
+    for layer_no in 0..gpt2_model.num_layers {
         let layer = &gpt2_model.layers[layer_no];
         generate_token_single_layer(GenerateTokenSingleLayerArgs {
-            layer_no, layer, qkv_size, hidden: &mut hidden, n_heads, ffn_dim, kv_cache, dim, head_dim, gpu
+            layer_no, layer, qkv_size, hidden: &mut hidden,
+            kv_cache,
+            n_heads: gpt2_model.n_heads, ffn_dim: gpt2_model.ffn_dim, dim: gpt2_model.dim, head_dim: gpt2_model.head_dim,
+            gpu
         });
     }
-    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim, vocab_size, gpu});
+    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim: gpt2_model.dim, vocab_size: gpt2_model.vocab_size, gpu});
 
     top_id
 }
