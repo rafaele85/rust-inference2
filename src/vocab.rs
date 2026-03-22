@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fs;
 
-pub struct Vocab {
+pub struct Gpt2Vocab {
     token_to_id: HashMap<String, usize>,
     id_to_token: HashMap<usize, String>,
 }
 
-impl Vocab {
+impl Gpt2Vocab {
     pub fn load(path: &String) -> Self {
 
         let content = fs::read_to_string(path).expect(&format!("Failed to read file {}", &path ));
@@ -17,7 +17,7 @@ impl Vocab {
             id_to_token.insert(*id, token.clone());
         }
 
-        Vocab { id_to_token, token_to_id }
+        Gpt2Vocab { id_to_token, token_to_id }
     }
 
     pub fn decode(&self, token_id: usize) -> String {
