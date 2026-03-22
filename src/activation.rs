@@ -1,3 +1,5 @@
+use crate::common_types::{Arrf32, Vecf32};
+
 const GELU_COEFF: f32 = 0.044715;
 const HALF: f32 = 0.5;
 
@@ -36,4 +38,10 @@ pub fn argmax(values: &[f32]) -> usize {
     }
 
     max_idx
+}
+
+pub fn silu(input: &Arrf32) -> Vecf32 {
+    let result = input.iter().map(|&x| x / (1.0 + (-x).exp())).collect();
+
+    result
 }

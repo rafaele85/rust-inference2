@@ -12,14 +12,18 @@ mod kv_cache;
 mod common_types;
 mod gpu;
 
+use crate::activation::silu;
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
+use crate::matmul::matmul_transposed;
 use crate::norm::rms_norm;
 use crate::safetensors::{load_all_layers, SafeTensor};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
 
 fn main() {
+    let gpu = Gpu::new(0);
+
     let mut llama_model = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors");
     let embed_weights = llama_model.load_tensor_bf16("model.embed_tokens.weight");
     let ln1_w = llama_model.load_tensor_bf16("model.layers.0.input_layernorm.weight");
@@ -31,7 +35,17 @@ fn main() {
     let normed = rms_norm(embed_token, &ln1_w, 1e-5);
     println!("rms_norm {:?}", &normed[0..5]);
 
-    let gpu = Gpu::new(0);
+    let q_proj_w = llama_model.load_tensor_bf16("model.layers.0.self_attn.q_proj.weight");
+    let q_proj_gpu = gpu.upload(&q_proj_w);
+    let q = matmul_transposed(&normed, &q_proj_gpu, dim, &gpu);
+    println!("q {:?}", &q[0..5]);
+
+    let gate_proj_w = llama_model.load_tensor_bf16("model.layers.0.mlp.gate_proj.weight");
+    let gate_proj_gpu = gpu.upload(&gate_proj_w);
+    let gate = matmul_transposed(&normed, &gate_proj_gpu, 5632, &gpu);
+    let silu_gate = silu(&gate);
+    println!("silu_gate {:?}", &silu_gate[0..5]);
+
 
     let num_layers = 12;
 
