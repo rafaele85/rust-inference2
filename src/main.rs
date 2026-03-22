@@ -11,12 +11,14 @@ mod vocab;
 mod kv_cache;
 mod common_types;
 mod gpu;
+mod rope;
 
 use crate::activation::silu;
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
 use crate::matmul::matmul_transposed;
 use crate::norm::rms_norm;
+use crate::rope::{apply_rope, compute_rope_freqs};
 use crate::safetensors::{load_all_layers, SafeTensor};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
@@ -45,6 +47,21 @@ fn main() {
     let gate = matmul_transposed(&normed, &gate_proj_gpu, 5632, &gpu);
     let silu_gate = silu(&gate);
     println!("silu_gate {:?}", &silu_gate[0..5]);
+
+    let (cos, sin) = compute_rope_freqs(64, 1, 10000.0, 64/2);
+    println!("cos {:?}", &cos[0..5]);
+    println!("sin {:?}", &sin[0..5]);
+
+    let q_rope = apply_rope(&q, &cos, &sin, 64);
+    println!("q_rope {:?}", &q_rope[0..5]);
+
+    let k_proj_w = llama_model.load_tensor_bf16("model.layers.0.self_attn.k_proj.weight");
+    let k_proj_gpu = gpu.upload(&k_proj_w);
+    let k = matmul_transposed(&normed, &k_proj_gpu, 256, &gpu);
+    let k_rope = apply_rope(&k, &cos, &sin, 64);
+    println!("k_rope {:?}", &k_rope[0..5]);
+
+
 
 
     let num_layers = 12;
