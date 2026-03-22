@@ -20,31 +20,40 @@ use crate::matmul::matmul_transposed;
 use crate::norm::rms_norm;
 use crate::rope::{apply_rope, compute_rope_freqs};
 use model::safetensors::SafeTensor;
-use crate::model::gpt2::{GPT2Model};
+use crate::model::gpt2::gpt2::GPT2Model;
+use crate::model::llama::llama::LlamaModel;
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
 
 fn main() {
     let gpu = Gpu::new(0);
 
-    let mut llama_model = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors");
-    let embed_weights = llama_model.load_tensor_bf16("model.embed_tokens.weight");
-    let ln1_w = llama_model.load_tensor_bf16("model.layers.0.input_layernorm.weight");
+    let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors");
+    let num_layers = 1;
+    let llama_model = LlamaModel::new(&mut safe_tensor_llama, num_layers, &gpu);
+    let embed_weights = safe_tensor_llama.load_tensor_bf16("model.embed_tokens.weight");
+
+    let input_norm_w = &llama_model.layers[0].input_norm_w;
+    let q_proj_gpu = &llama_model.layers[0].q_proj_w;
+    let k_proj_gpu = &llama_model.layers[0].k_proj_w;
+    let gate_proj_gpu = &llama_model.layers[0].gate_proj_w;
+
+    //let q_proj_w = safe_tensor_llama.load_tensor_bf16("model.layers.0.self_attn.q_proj.weight");
+    //let gate_proj_w = safe_tensor_llama.load_tensor_bf16("model.layers.0.mlp.gate_proj.weight");
+    //let k_proj_w = safe_tensor_llama.load_tensor_bf16("model.layers.0.self_attn.k_proj.weight");
+
+
     let dim = 2048;
     let token_id = 1usize;
     let embed_token = &embed_weights[token_id * dim..token_id * dim + dim];
     println!("embed_token first 5: {:?}", &embed_token[0..5]);
 
-    let normed = rms_norm(embed_token, &ln1_w, 1e-5);
+    let normed = rms_norm(embed_token, &input_norm_w, 1e-5);
     println!("rms_norm {:?}", &normed[0..5]);
 
-    let q_proj_w = llama_model.load_tensor_bf16("model.layers.0.self_attn.q_proj.weight");
-    let q_proj_gpu = gpu.upload(&q_proj_w);
     let q = matmul_transposed(&normed, &q_proj_gpu, dim, &gpu);
     println!("q {:?}", &q[0..5]);
 
-    let gate_proj_w = llama_model.load_tensor_bf16("model.layers.0.mlp.gate_proj.weight");
-    let gate_proj_gpu = gpu.upload(&gate_proj_w);
     let gate = matmul_transposed(&normed, &gate_proj_gpu, 5632, &gpu);
     let silu_gate = silu(&gate);
     println!("silu_gate {:?}", &silu_gate[0..5]);
@@ -56,8 +65,6 @@ fn main() {
     let q_rope = apply_rope(&q, &cos, &sin, 64);
     println!("q_rope {:?}", &q_rope[0..5]);
 
-    let k_proj_w = llama_model.load_tensor_bf16("model.layers.0.self_attn.k_proj.weight");
-    let k_proj_gpu = gpu.upload(&k_proj_w);
     let k = matmul_transposed(&normed, &k_proj_gpu, 256, &gpu);
     let k_rope = apply_rope(&k, &cos, &sin, 64);
     println!("k_rope {:?}", &k_rope[0..5]);
@@ -76,8 +83,8 @@ fn main() {
     let vocab_size = vocab.size();
 
 
-    let mut safetensors = SafeTensor::open("model/model.safetensors");
-    let gpt2_model = GPT2Model::new(&mut safetensors, &gpu, num_layers);
+    let mut safe_tensor_gpt2 = SafeTensor::open("model/model.safetensors");
+    let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu, num_layers);
 
     println!("Begin generation");
 

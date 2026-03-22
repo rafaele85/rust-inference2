@@ -2,7 +2,7 @@ use crate::activation::argmax;
 use crate::common_types::{Arrf32};
 use crate::gpu::Gpu;
 use crate::matmul::matmul_transposed;
-use crate::model::gpt2::GPT2Model;
+use crate::model::gpt2::gpt2::GPT2Model;
 use crate::norm::layer_norm;
 
 pub struct ComputeLogitsArgs<'a> {

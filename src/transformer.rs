@@ -6,7 +6,7 @@ use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
 use crate::linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::logits::{compute_logits, ComputeLogitsArgs};
-use crate::model::gpt2::{GPT2Layer, GPT2Model};
+use crate::model::gpt2::gpt2::{GPT2Layer, GPT2Model};
 
 pub struct GenerateTokenSingleLayerArgs<'a> {
     pub layer_no: usize,
