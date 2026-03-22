@@ -101,7 +101,7 @@ pub fn initialize_hidden(args: InitializeHiddenArgs) -> Vec<f32> {
 fn cache_kv_for_position(qkv: &Arrf32, dim: usize, kv_cache: &mut KVCache, layer_no: usize) {
     let k = qkv[dim..dim+dim].to_vec();
     let v = qkv[dim+dim..dim+dim+dim].to_vec();
-    kv_cache.append(layer_no, &k, &v);
+    kv_cache.append(layer_no, k, v);
 }
 
 pub struct FillAllQKVArgs<'a> {
@@ -299,7 +299,7 @@ pub fn generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
 
     let QKV {q, k, v} = extract_qkv(&qkv);
 
-    kv_cache.append(layer_no, &k, &v);
+    kv_cache.append(layer_no, k, v);
 
     let k_cache = &kv_cache.k[layer_no];
     let v_cache = &kv_cache.v[layer_no];

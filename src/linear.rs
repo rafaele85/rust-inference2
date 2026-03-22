@@ -1,4 +1,4 @@
-use crate::common_types::Vecf32;
+use crate::common_types::{Arrf32, Vecf32};
 use crate::matmul::matmul;
 use crate::norm::layer_norm;
 
@@ -31,15 +31,15 @@ pub fn project_and_residual(args: ProjectAndResidualArgs) -> () {
 }
 
 pub struct NormalizeAndProject<'a> {
-    pub hidden: &'a mut [f32],
-    pub norm_weights: &'a Vec<f32>,
-    pub norm_bias: &'a Vec<f32>,
-    pub projection_weights: &'a Vec<f32>,
-    pub projection_bias: &'a Vec<f32>,
+    pub hidden: &'a Arrf32,
+    pub norm_weights: &'a Vecf32,
+    pub norm_bias: &'a Vecf32,
+    pub projection_weights: &'a Vecf32,
+    pub projection_bias: &'a Vecf32,
     pub projection_dim: usize,
 }
 
-pub fn normalize_and_project(args: NormalizeAndProject) -> Vec<f32> {
+pub fn normalize_and_project(args: NormalizeAndProject) -> Vecf32 {
     let mut normalized = layer_norm(args.hidden, args.norm_weights, args.norm_bias);
     let result = linear_projection(&mut normalized, args.projection_weights, args.projection_bias, args.projection_dim);
 

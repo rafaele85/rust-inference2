@@ -14,15 +14,11 @@ impl KVCache {
         KVCache { k, v }
     }
 
-    pub fn append(&mut self, layer_no: usize, k_new: &KVVector, v_new: &KVVector) {
+    pub fn append(&mut self, layer_no: usize, k_new: KVVector, v_new: KVVector) {
         let mut position_vector_k = &mut self.k[layer_no];
-        position_vector_k.push(k_new.clone());
+        position_vector_k.push(k_new);
 
         let mut position_vector_v = &mut self.v[layer_no];
-        position_vector_v.push(v_new.clone());
-    }
-
-    pub fn k_at(&self, layer_no: usize, pos: usize) -> KVVector {
-        self.k[layer_no][pos].clone()
+        position_vector_v.push(v_new);
     }
 }
