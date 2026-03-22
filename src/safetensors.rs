@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::io::SeekFrom::Start;
-use crate::common_types::Weight;
+use crate::common_types::{Vecf32, Weight};
 use crate::gpu::Gpu;
 
 struct TensorEntry {
@@ -46,7 +46,7 @@ impl SafeTensor {
 
     pub fn load_tensor(&mut self, name: &str) -> Vec<f32> {
         if !self.entries.contains_key(name) {
-            println!("NOT FOUND KEY {}", name);
+            panic!("NOT FOUND KEY {}", name);
         }
         let entry = &self.entries[name];
         let start = self.data_offset + entry.offsets[0];
@@ -57,6 +57,27 @@ impl SafeTensor {
         self.file.read_exact(&mut bytes).expect("Failed to read file");
 
         let result = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+
+        result
+    }
+
+    pub fn load_tensor_bf16(&mut self, name: &str) -> Vecf32 {
+        if !self.entries.contains_key(name) {
+            panic!("NOT FOUND KEY {}", name);
+        }
+
+        let entry = &self.entries[name];
+        let start = self.data_offset + entry.offsets[0];
+        let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
+
+        let mut bytes = vec![0u8; byte_len];
+        self.file.seek(Start(start)).unwrap();
+        self.file.read_exact(&mut bytes).expect("Failed to read file");
+
+        let result = bytes.chunks_exact(2).map(|c| {
+            let bits = u16::from_le_bytes(c.try_into().unwrap());
+            f32::from_bits((bits as u32) << 16)
+        }).collect();
 
         result
     }
@@ -107,3 +128,4 @@ pub fn load_all_layers(model: &mut SafeTensor, nlayers: usize, gpu: &Gpu) -> Vec
 
     layers
 }
+

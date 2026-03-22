@@ -14,14 +14,24 @@ mod gpu;
 
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
+use crate::norm::rms_norm;
 use crate::safetensors::{load_all_layers, SafeTensor};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 use crate::vocab::Vocab;
 
 fn main() {
+    let mut llama_model = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/model.safetensors");
+    let embed_weights = llama_model.load_tensor_bf16("model.embed_tokens.weight");
+    let ln1_w = llama_model.load_tensor_bf16("model.layers.0.input_layernorm.weight");
+    let dim = 2048;
+    let token_id = 1usize;
+    let embed_token = &embed_weights[token_id * dim..token_id * dim + dim];
+    println!("embed_token first 5: {:?}", &embed_token[0..5]);
+
+    let normed = rms_norm(embed_token, &ln1_w, 1e-5);
+    println!("rms_norm {:?}", &normed[0..5]);
 
     let gpu = Gpu::new(0);
-    println!("Gpu initialized");
 
     let num_layers = 12;
 
@@ -61,7 +71,7 @@ fn main() {
     }
     token_ids.push(first_generated);
 
-    for _ in 0..4 {
+    for _ in 0..49 {
         let seq_len = token_ids.len();
         let pos = seq_len - 1;
         let last_id = *token_ids.last().unwrap();
