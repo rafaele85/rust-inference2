@@ -68,17 +68,12 @@ fn main() {
 
     //-----------GPT2-------------
 
-    let gpt2_num_layers  = 12; //gpt2_config.n_layer; // 12;
-    let gpt2_dim = 768; //gpt2_config.n_embd;
-    let gpt2_ffn_dim = 3072; //gpt2_config.n_inner;
-    let gpt2_heads = 12; //gpt2_config.n_head; //12;
-
     let mut safe_tensor_gpt2 = SafeTensor::open("model");
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
     println!("Begin generation");
 
-    let mut kv_cache = KVCache::new(gpt2_num_layers);
+    let mut kv_cache = KVCache::new(gpt2_model.config.n_layer);
 
     let mut token_ids: Vec<usize> = gpt2_model.vocab.encode("The capital of France is");
     let seq_len = token_ids.len();
