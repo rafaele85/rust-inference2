@@ -74,7 +74,7 @@ fn main() {
     let gpt2_heads = 12; //gpt2_config.n_head; //12;
 
     let mut safe_tensor_gpt2 = SafeTensor::open("model");
-    let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu, gpt2_num_layers, gpt2_dim, gpt2_ffn_dim, gpt2_heads);
+    let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
     println!("Begin generation");
 

@@ -78,24 +78,24 @@ pub fn generate_token(args: GenerateTokenArgs) -> usize {
         gpu, gpt2_model
     } = args;
 
-    let wte_start = token_id * gpt2_model.dim;
-    let wpe_start = position * gpt2_model.dim;
-    let wte_row = &gpt2_model.wte[wte_start..wte_start + gpt2_model.dim];
-    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + gpt2_model.dim];
-    let qkv_size = gpt2_model.dim * 3;
+    let wte_start = token_id * gpt2_model.config.n_embd;
+    let wpe_start = position * gpt2_model.config.n_embd;
+    let wte_row = &gpt2_model.wte[wte_start..wte_start + gpt2_model.config.n_embd];
+    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + gpt2_model.config.n_embd];
+    let qkv_size = gpt2_model.config.n_embd * 3;
 
     let mut hidden = combine_embedding_weights(wte_row, wpe_row);
 
-    for layer_no in 0..gpt2_model.num_layers {
+    for layer_no in 0..gpt2_model.config.n_layer {
         let layer = &gpt2_model.layers[layer_no];
         generate_token_single_layer(GenerateTokenSingleLayerArgs {
             layer_no, layer, qkv_size, hidden: &mut hidden,
             kv_cache,
-            n_heads: gpt2_model.n_heads, ffn_dim: gpt2_model.ffn_dim, dim: gpt2_model.dim, head_dim: gpt2_model.head_dim,
+            n_heads: gpt2_model.config.n_head, ffn_dim: gpt2_model.config.ffn_dim, dim: gpt2_model.config.n_embd, head_dim: gpt2_model.config.head_dim,
             gpu
         });
     }
-    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim: gpt2_model.dim, vocab_size: gpt2_model.vocab_size, gpu});
+    let top_id = compute_logits(ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim: gpt2_model.config.n_embd, vocab_size: gpt2_model.config.vocab_size, gpu});
 
     top_id
 }
