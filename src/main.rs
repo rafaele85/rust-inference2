@@ -27,19 +27,9 @@ use crate::transformer::{generate_token, GenerateTokenArgs};
 fn main() {
     let gpu = Gpu::new(0);
 
-    let llama_num_layers = 1; // temporary llama_config.num_hidden_layers; //22;
-    let llama_dim = 2048; //llama_config.hidden_size ; // 2048;
-    let llama_gate_out_dim = 5632; //llama_config.intermediate_size;
-    let llama_theta = 10000.0; //llama_config.rope_theta;
-    let llama_heads = 32; //llama_config.num_attention_heads;
-    let llama_kv_heads = 4; //llama_config.num_key_value_heads;
-    let llama_head_dim = llama_dim / llama_heads;
-    let llama_kv_dim = llama_kv_heads * llama_head_dim;
-
     let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
 
-    let llama_model = LlamaModel::new(&mut safe_tensor_llama, llama_num_layers, &gpu);
-    let embed_weights = safe_tensor_llama.load_tensor_bf16("model.embed_tokens.weight");
+    let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
 
     let input_norm_w = &llama_model.layers[0].input_norm_w;
     let q_proj_gpu = &llama_model.layers[0].q_proj_w;
@@ -49,31 +39,31 @@ fn main() {
 
 
     let token_id = 1usize;
-    let embed_token = &embed_weights[token_id * llama_dim..token_id * llama_dim + llama_dim];
+    let embed_token = &llama_model.embed_weights[token_id * llama_model.config.hidden_size..token_id * llama_model.config.hidden_size + llama_model.config.hidden_size];
     println!("embed_token first 5: {:?}", &embed_token[0..5]);
 
     let normed = rms_norm(embed_token, &input_norm_w, 1e-5);
     println!("rms_norm {:?}", &normed[0..5]);
 
-    let q = matmul_transposed(&normed, &q_proj_gpu, llama_dim, &gpu);
+    let q = matmul_transposed(&normed, &q_proj_gpu, llama_model.config.hidden_size, &gpu);
     println!("q {:?}", &q[0..5]);
 
-    let gate = matmul_transposed(&normed, &gate_proj_gpu, llama_gate_out_dim, &gpu);
+    let gate = matmul_transposed(&normed, &gate_proj_gpu, llama_model.config.intermediate_size, &gpu);
     let silu_gate = silu(&gate);
     println!("silu_gate {:?}", &silu_gate[0..5]);
 
-    let (cos, sin) = compute_rope_freqs(llama_head_dim, 1, llama_theta, llama_head_dim/2);
+    let (cos, sin) = compute_rope_freqs(llama_model.config.head_dim, 1, llama_model.config.rope_theta, llama_model.config.head_dim/2);
     println!("cos {:?}", &cos[0..5]);
     println!("sin {:?}", &sin[0..5]);
 
-    let q_rope = apply_rope(&q, &cos, &sin, llama_head_dim);
+    let q_rope = apply_rope(&q, &cos, &sin, llama_model.config.head_dim);
     println!("q_rope {:?}", &q_rope[0..5]);
 
-    let k = matmul_transposed(&normed, &k_proj_gpu, llama_kv_dim, &gpu);
-    let k_rope = apply_rope(&k, &cos, &sin, llama_head_dim );
+    let k = matmul_transposed(&normed, &k_proj_gpu, llama_model.config.kv_dim, &gpu);
+    let k_rope = apply_rope(&k, &cos, &sin, llama_model.config.head_dim );
     println!("k_rope {:?}", &k_rope[0..5]);
 
-    let v = matmul_transposed(&normed, v_proj_gpu, llama_kv_dim, &gpu);
+    let v = matmul_transposed(&normed, v_proj_gpu, llama_model.config.kv_dim, &gpu);
     println!("v[:5]: {:?}", &v[0..5]);
 
     //-----------GPT2-------------
