@@ -1,6 +1,6 @@
 use crate::common_types::{Arrf32, Vecf32, Weight};
 use crate::gpu::Gpu;
-use crate::matmul::matmul;
+use crate::matmul::{matmul};
 use crate::norm::layer_norm;
 
 pub fn linear_projection(input: &[f32], weight: &Weight, bias: &[f32], out_dim: usize, gpu: &Gpu) -> Vec<f32> {
@@ -12,7 +12,8 @@ pub fn linear_projection(input: &[f32], weight: &Weight, bias: &[f32], out_dim: 
     output
 }
 
-pub fn add_to_vector(input: &mut [f32], vector_to_add: &[f32]) -> () {
+
+pub fn add_to_vector(input: &mut Arrf32, vector_to_add: &Arrf32) -> () {
     for i in 0..input.len() {
         input[i] += vector_to_add[i];
     }
@@ -79,4 +80,13 @@ pub fn scale_and_add_multi(args: ScaleAndAddMultiArgs) {
         scale_and_add(ScaleAndAddArgs {output, source, num_iterations, start_offset, scale});
     }
 
+}
+
+pub fn hadamard(a: Vecf32, b: Vecf32, len: usize) -> Vecf32 {
+    let mut output = vec![0.0f32; len];
+    for i in 0..len {
+        output[i] = a[i] * b[i];
+    }
+
+    output
 }
