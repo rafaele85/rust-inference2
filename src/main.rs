@@ -1,17 +1,10 @@
-mod norm;
-mod embeddings;
 mod matmul;
-mod linear;
-mod attention;
 mod activation;
-mod transformer;
-mod logits;
-mod vocab;
 mod kv_cache;
 mod common_types;
 mod gpu;
-mod rope;
 mod model;
+mod linear;
 
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
@@ -19,7 +12,7 @@ use model::safetensors::SafeTensor;
 use crate::model::gpt2::gpt2::GPT2Model;
 use crate::model::llama::llama::LlamaModel;
 use crate::model::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
-use crate::transformer::{generate_token, GenerateTokenArgs};
+use model::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
 
 fn main() {
     let gpu = Gpu::new(0);
@@ -63,7 +56,7 @@ fn main() {
     let mut first_generated = 0;
     for pos in 0..seq_len {
         let id = token_ids[pos];
-        let top_id = generate_token(GenerateTokenArgs {
+        let top_id = gpt2_generate_token(GPT2GenerateTokenArgs {
             token_id: id, position: pos,
             kv_cache: &mut kv_cache, gpu: &gpu, gpt2_model: &gpt2_model
         });
@@ -75,7 +68,7 @@ fn main() {
         let seq_len = token_ids.len();
         let pos = seq_len - 1;
         let last_id = *token_ids.last().unwrap();
-        let top_id = generate_token(GenerateTokenArgs {
+        let top_id = gpt2_generate_token(GPT2GenerateTokenArgs {
             token_id: last_id, position: pos,
             gpt2_model: &gpt2_model, kv_cache: &mut kv_cache, gpu: &gpu
         });
