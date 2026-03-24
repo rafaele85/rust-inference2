@@ -24,6 +24,8 @@ fn main() {
 
     let llama_tokenizer = BpeTokenizer::load("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json");
     println!("Llama vocab size: {}", llama_tokenizer.vocab.len());
+    let ids = llama_tokenizer.encode("Hello world");
+    println!("llama encode: {:?}", ids);
 
     let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
 

@@ -30,4 +30,75 @@ impl BpeTokenizer {
 
         Self {vocab, id_to_token, merges}
     }
+
+    fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
+        let mut merge_ranks: HashMap<(String, String), usize> = HashMap::new();
+        for (i, (a, b)) in self.merges.iter().enumerate() {
+            merge_ranks.insert((a.clone(), b.clone()), i as usize);
+        }
+        merge_ranks
+    }
+
+    fn text_to_chars(&self, text: &str) -> Vec<String> {
+        let text = text.trim().replace(" ", "\u{2581}");
+        let prepended_text = format!("\u{2581}{}", text);
+        let mut tokens : Vec<String> = prepended_text.chars().map(|c| c.to_string()).collect();
+
+        tokens
+    }
+
+    fn find_best_pair_idx(&self, tokens: &mut Vec<String>, merge_ranks: &HashMap<(String, String), usize>) -> Option<usize> {
+        let mut best_idx: Option<usize> = None;
+        let mut best_rank = usize::MAX;
+        let mut found = false;
+
+        for i in 0..tokens.len() - 1 {
+            let pair = (tokens[i].clone(), tokens[i + 1].clone());
+            if let Some(&rank) = merge_ranks.get(&pair) {
+                if rank < best_rank {
+                    best_rank = rank;
+                    found = true;
+                    best_idx = Some(i);
+                }
+            }
+        }
+
+        best_idx
+    }
+    fn merge_best(&self, tokens: &mut Vec<String>, merge_ranks: &HashMap<(String, String), usize>) -> bool {
+        let res = self.find_best_pair_idx(tokens, merge_ranks);
+
+        if let Some(best_idx) = res {
+            let merged = format!("{}{}", tokens[best_idx], tokens[best_idx+1]);
+            tokens[best_idx] = merged;
+            tokens.remove(best_idx + 1);
+
+            return true;
+        }
+
+        false
+    }
+
+    fn tokens_to_ids(&self, tokens: Vec<String>) -> Vec<u32> {
+        let res = tokens.iter().map(|t| {
+            *self.vocab.get(t).expect(&format!("vocab entry for {} not found", t))
+        }).collect();
+
+        res
+    }
+
+    pub fn encode(&self, text: &str) -> Vec<u32> {
+        let merge_ranks = self.fill_merge_ranks();
+        let mut tokens = self.text_to_chars(text);
+
+        while self.merge_best(&mut tokens, &merge_ranks) {}
+
+        let res = self.tokens_to_ids(tokens);
+
+        res
+    }
+
+    pub fn decode(&self, ids: &Vec<u32>) -> String {
+        ids.iter().map(|&id| self.id_to_token[&id].replace("_", " ")).collect::<Vec<_>>().join("")
+    }
 }
