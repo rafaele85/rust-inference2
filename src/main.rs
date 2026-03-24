@@ -13,18 +13,12 @@ mod gpu;
 mod rope;
 mod model;
 
-use crate::activation::silu;
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
-use crate::matmul::matmul_transposed;
-use crate::norm::rms_norm;
-use crate::rope::{apply_rope, compute_rope_freqs};
 use model::safetensors::SafeTensor;
-use crate::common_types::Vecf32;
-use crate::linear::add_to_vector;
 use crate::model::gpt2::gpt2::GPT2Model;
 use crate::model::llama::llama::LlamaModel;
-use crate::model::llama::llama_transformer::{llama_layer, LlamaLayerArgs};
+use crate::model::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
 use crate::transformer::{generate_token, GenerateTokenArgs};
 
 fn main() {
@@ -34,24 +28,24 @@ fn main() {
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
     let token_id = 1usize;
-    let token_start = token_id * llama_model.config.hidden_size;
-    let embed_token = &llama_model.embed_weights[token_start..token_start + llama_model.config.hidden_size];
-
-
-    let mut hidden_llama = embed_token.to_vec();
 
     let mut kv_cache_llama = KVCache::new(llama_model.config.num_hidden_layers);
-    llama_layer(LlamaLayerArgs {
-        kv_cache: &mut kv_cache_llama,
-        layer: &llama_model.layers[0],
-        config: &llama_model.config,
-        layer_no: 0,
-        position: 0,
-        gpu: &gpu,
-        hidden: &mut hidden_llama
-    });
 
-    println!("layer0_out[:5]: {:?}", &hidden_llama[0..5]);
+    let mut token_ids: Vec<usize> = vec![1];
+    for i in 0..10 {
+        let pos = token_ids.len() - 1;
+        let last_id = *token_ids.last().unwrap();
+        let output_id = llama_generate_token(LlamaGenerateTokenArgs {
+            model: &llama_model,
+            token_id: last_id,
+            position: i,
+            gpu: &gpu,
+            kv_cache: &mut kv_cache_llama,
+        });
+        println!("pos={} id={}", i, output_id);
+        token_ids.push(output_id)
+    }
+
 
 
     //-----------GPT2-------------
