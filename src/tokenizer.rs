@@ -5,10 +5,12 @@ pub struct BpeTokenizer {
     pub vocab: HashMap<String, u32>,
     pub id_to_token: HashMap<u32, String>,
     pub merges: Vec<(String, String)>,
+    pub space_char: String,
+    pub add_leading_space: bool
 }
 
 impl BpeTokenizer {
-    pub fn load(path: &str) -> Self {
+    pub fn load(path: &str, space_char: String, add_leading_space: bool) -> Self {
         let content = fs::read_to_string(&path).expect(&format!("Failed to read file {}", path));
         let json:serde_json::Value = serde_json::from_str(&content).expect(&format!("Failed to parse file {}", path));
         let vocab_map = json["model"]["vocab"].as_object().unwrap();
@@ -28,7 +30,7 @@ impl BpeTokenizer {
             (parts[0].to_string(), parts[1].to_string())
         }).collect();
 
-        Self {vocab, id_to_token, merges}
+        Self {vocab, id_to_token, merges, space_char, add_leading_space}
     }
 
     fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
@@ -40,8 +42,9 @@ impl BpeTokenizer {
     }
 
     fn text_to_chars(&self, text: &str) -> Vec<String> {
-        let text = text.trim().replace(" ", "\u{2581}");
-        let prepended_text = format!("\u{2581}{}", text);
+        let text = text.trim().replace(" ", &self.space_char);
+        let prefix = if self.add_leading_space { &self.space_char } else { &"".to_string() };
+        let prepended_text = format!("{}{}", prefix, text);
         let mut tokens : Vec<String> = prepended_text.chars().map(|c| c.to_string()).collect();
 
         tokens

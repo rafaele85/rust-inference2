@@ -19,10 +19,23 @@ use crate::tokenizer::BpeTokenizer;
 fn main() {
     let gpu = Gpu::new(0);
 
-    let gpt2_tokenizer = BpeTokenizer::load("model/tokenizer.json");
+    let gpt2_tokenizer = BpeTokenizer::load(
+        "model/tokenizer.json",
+        "\u{0120}".to_string(),
+        false
+    );
     println!("GPT-2 vocab size: {}", gpt2_tokenizer.vocab.len());
+    let ids = gpt2_tokenizer.encode("The capital of France is");
+    println!("gpt2 encode: {:?}", ids);
 
-    let llama_tokenizer = BpeTokenizer::load("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json");
+    let ids = gpt2_tokenizer.encode("hello");
+    println!("gpt2 'hello': {:?}", ids);
+
+    let llama_tokenizer = BpeTokenizer::load(
+        "/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
+        "\u{2581}".to_string(),
+        true
+    );
     println!("Llama vocab size: {}", llama_tokenizer.vocab.len());
     let ids = llama_tokenizer.encode("Hello world");
     println!("llama encode: {:?}", ids);
