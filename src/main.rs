@@ -5,6 +5,7 @@ mod common_types;
 mod gpu;
 mod model;
 mod linear;
+mod tokenizer;
 
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
@@ -13,14 +14,20 @@ use crate::model::gpt2::gpt2::GPT2Model;
 use crate::model::llama::llama::LlamaModel;
 use crate::model::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
 use model::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
+use crate::tokenizer::BpeTokenizer;
 
 fn main() {
     let gpu = Gpu::new(0);
 
+    let gpt2_tokenizer = BpeTokenizer::load("model/tokenizer.json");
+    println!("GPT-2 vocab size: {}", gpt2_tokenizer.vocab.len());
+
+    let llama_tokenizer = BpeTokenizer::load("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json");
+    println!("Llama vocab size: {}", llama_tokenizer.vocab.len());
+
     let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
-    let token_id = 1usize;
 
     let mut kv_cache_llama = KVCache::new(llama_model.config.num_hidden_layers);
 
