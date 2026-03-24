@@ -3,17 +3,17 @@ mod activation;
 mod kv_cache;
 mod common_types;
 mod gpu;
-mod model;
+mod arch;
 mod linear;
 mod tokenizer;
 
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
-use model::safetensors::SafeTensor;
-use crate::model::gpt2::gpt2::GPT2Model;
-use crate::model::llama::llama::LlamaModel;
-use crate::model::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
-use model::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
+use arch::safetensors::SafeTensor;
+use crate::arch::gpt2::gpt2::GPT2Model;
+use crate::arch::llama::llama::LlamaModel;
+use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
+use arch::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
 use crate::tokenizer::BpeTokenizer;
 
 fn main() {
