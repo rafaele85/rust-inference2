@@ -102,6 +102,6 @@ impl BpeTokenizer {
     }
 
     pub fn decode(&self, ids: &Vec<u32>) -> String {
-        ids.iter().map(|&id| self.id_to_token[&id].replace("_", " ")).collect::<Vec<_>>().join("")
+        ids.iter().map(|&id| self.id_to_token[&id].replace(&self.space_char, " ")).collect::<Vec<_>>().join("").trim_start().to_string()
     }
 }
