@@ -51,8 +51,4 @@ impl Gpt2Vocab {
 
         ids
     }
-
-    pub fn size(&self) -> usize {
-        self.id_to_token.len()
-    }
 }

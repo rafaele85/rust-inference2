@@ -14,6 +14,7 @@ pub struct GPT2Config {
     pub ffn_dim: usize,
     #[serde(default)]
     pub head_dim: usize,
+    pub eos_token_id: u32,
 }
 
 impl GPT2Config {

@@ -18,6 +18,7 @@ pub struct LlamaConfig {
     pub kv_dim: usize,
     #[serde(default)]
     pub heads_to_kvheads: usize,
+    pub eos_token_id: u32,
 }
 
 impl LlamaConfig {

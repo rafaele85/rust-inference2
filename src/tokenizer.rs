@@ -36,7 +36,7 @@ impl BpeTokenizer {
     fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
         let mut merge_ranks: HashMap<(String, String), usize> = HashMap::new();
         for (i, (a, b)) in self.merges.iter().enumerate() {
-            merge_ranks.insert((a.clone(), b.clone()), i as usize);
+            merge_ranks.insert((a.clone(), b.clone()), i);
         }
         merge_ranks
     }
@@ -45,7 +45,7 @@ impl BpeTokenizer {
         let text = text.trim().replace(" ", &self.space_char);
         let prefix = if self.add_leading_space { &self.space_char } else { &"".to_string() };
         let prepended_text = format!("{}{}", prefix, text);
-        let mut tokens : Vec<String> = prepended_text.chars().map(|c| c.to_string()).collect();
+        let tokens : Vec<String> = prepended_text.chars().map(|c| c.to_string()).collect();
 
         tokens
     }
@@ -53,14 +53,12 @@ impl BpeTokenizer {
     fn find_best_pair_idx(&self, tokens: &mut Vec<String>, merge_ranks: &HashMap<(String, String), usize>) -> Option<usize> {
         let mut best_idx: Option<usize> = None;
         let mut best_rank = usize::MAX;
-        let mut found = false;
 
         for i in 0..tokens.len() - 1 {
             let pair = (tokens[i].clone(), tokens[i + 1].clone());
             if let Some(&rank) = merge_ranks.get(&pair) {
                 if rank < best_rank {
                     best_rank = rank;
-                    found = true;
                     best_idx = Some(i);
                 }
             }

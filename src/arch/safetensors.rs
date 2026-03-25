@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Seek};
-use std::io::SeekFrom::Start;
-use crate::common_types::{Vecf32};
+use std::io::{Read};
 
 pub struct TensorEntry {
     pub offsets: [u64; 2],

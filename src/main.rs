@@ -6,6 +6,7 @@ mod gpu;
 mod arch;
 mod linear;
 mod tokenizer;
+mod generate;
 
 use crate::gpu::Gpu;
 use crate::kv_cache::KVCache;
@@ -46,12 +47,12 @@ fn main() {
     let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
+    println!("llama eos: {}", llama_model.config.eos_token_id);
 
     let mut kv_cache_llama = KVCache::new(llama_model.config.num_hidden_layers);
 
     let mut token_ids: Vec<usize> = vec![1];
     for i in 0..10 {
-        let pos = token_ids.len() - 1;
         let last_id = *token_ids.last().unwrap();
         let output_id = llama_generate_token(LlamaGenerateTokenArgs {
             model: &llama_model,
@@ -72,6 +73,7 @@ fn main() {
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
     println!("Begin generation");
+    println!("gpt2 eos: {}", gpt2_model.config.eos_token_id);
 
     let mut kv_cache = KVCache::new(gpt2_model.config.n_layer);
 
@@ -103,4 +105,6 @@ fn main() {
     let output: Vec<String> = token_ids.iter().map(|&id| gpt2_model.vocab.decode(id)).collect();
     let text = output.join("");
     println!("{}", text);
+
+
 }
