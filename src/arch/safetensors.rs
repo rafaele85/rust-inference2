@@ -57,13 +57,16 @@ impl SafeTensor {
         SafeTensor { files: vec![safetensors_file], data_offsets: vec![data_offset], entries, path_to_model_dir: path_to_model_dir.to_string() }
     }
 
-    fn extract_shard_names(weight_map: &Map<String, Value>) -> Vec<String> {
-        let mut names: Vec<String> = weight_map.values().map(|v| v.as_str().unwrap().to_string()).collect();
-        names.sort();
-        names.dedup();
+    fn prepare_shard_paths(path_to_model_dir: &str, weight_map: &Map<String, Value>) -> Vec<String> {
+        let mut paths: Vec<String> = weight_map.values().map(|v|
+            format!("{}/{}", path_to_model_dir, v.as_str().unwrap().to_string())
+        ).collect();
+        paths.sort();
+        paths.dedup();
 
-        names
+        paths
     }
+    
 
     pub fn open_sharded(path_to_model_dir: &str) -> Self {
         let index_path = &format!("{}/model.safetensors.index.json", path_to_model_dir);
@@ -74,9 +77,9 @@ impl SafeTensor {
         let mut data_offsets = Vec::new();
         let mut files = Vec::new();
 
-        let shard_names = SafeTensor::extract_shard_names(weight_map);
-        for (shard_idx, shard_name) in shard_names.iter().enumerate() {
-            let shard_path = &format!("{}/{}", path_to_model_dir, shard_name);
+        let shard_paths = SafeTensor::prepare_shard_paths(path_to_model_dir, weight_map);
+
+        for (shard_idx, shard_path) in shard_paths.iter().enumerate() {
             let mut file = File::open(shard_path).expect(&format!("Failed to open file {}", &shard_path));
             let (header_len, header) = Self::read_header(&mut file);
             let shard_entries = SafeTensor::prepare_entries(header, shard_idx);
