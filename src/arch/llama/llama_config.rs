@@ -19,6 +19,8 @@ pub struct LlamaConfig {
     #[serde(default)]
     pub heads_to_kvheads: usize,
     pub eos_token_id: u32,
+    #[serde(default)]
+    pub attn_dim: usize,
 }
 
 impl LlamaConfig {
@@ -26,9 +28,13 @@ impl LlamaConfig {
         let content = fs::read_to_string(&path).expect(&format!("Unable to read file {}", &path));
         let mut config: LlamaConfig = from_str(&content).expect(&format!("Unable to deserialize file"));
 
-        config.head_dim = config.hidden_size / config.num_attention_heads;
+        if config.head_dim == 0 {
+            config.head_dim = config.hidden_size / config.num_attention_heads;
+        }
+
         config.kv_dim = config.num_key_value_heads * config.head_dim;
         config.heads_to_kvheads = config.num_attention_heads / config.num_key_value_heads;
+        config.attn_dim = config.num_attention_heads * config.head_dim;
 
         config
     }

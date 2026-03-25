@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use serde_json::{Map, Value};
 
 pub struct BpeTokenizer {
     pub vocab: HashMap<String, u32>,
@@ -10,11 +11,8 @@ pub struct BpeTokenizer {
 }
 
 impl BpeTokenizer {
-    pub fn load(base_path: &str, space_char: String, add_leading_space: bool) -> Self {
-        let path = format!("{}/{}", base_path, "tokenizer.json");
-        let content = fs::read_to_string(&path).expect(&format!("Failed to read file {}", path));
-        let json:serde_json::Value = serde_json::from_str(&content).expect(&format!("Failed to parse file {}", path));
-        let vocab_map = json["model"]["vocab"].as_object().unwrap();
+
+    fn build_vocab(vocab_map: Map<String, Value>) -> (HashMap<String, u32>, HashMap<u32, String>) {
         let mut vocab = HashMap::new();
         let mut id_to_token = HashMap::new();
 
@@ -24,12 +22,29 @@ impl BpeTokenizer {
             id_to_token.insert(id, token.clone());
         }
 
-        let merges_arr = json["model"]["merges"].as_array().unwrap();
-        let merges: Vec<(String, String)> = merges_arr.iter().map(|m| {
-            let s = m.as_str().unwrap();
-            let parts: Vec<&str> = s.splitn(2, ' ').collect();
+        (vocab, id_to_token)
+    }
+
+    fn parse_merge(m: &Value) -> (String, String) {
+        if let Some(s) = m.as_str() {
+            let parts = s.splitn(2, ' ').collect::<Vec<&str>>();
             (parts[0].to_string(), parts[1].to_string())
-        }).collect();
+        } else {
+            let parts = m.as_array().unwrap();
+            (parts[0].as_str().unwrap().to_string(), parts[1].as_str().unwrap().to_string())
+        }
+    }
+    pub fn load(base_path: &str, space_char: String, add_leading_space: bool) -> Self {
+        let path = format!("{}/{}", base_path, "tokenizer.json");
+        let content = fs::read_to_string(&path).expect(&format!("Failed to read file {}", path));
+        let json: Value = serde_json::from_str(&content).expect(&format!("Failed to parse file {}", path));
+        let vocab_map = json["model"]["vocab"].as_object().unwrap();
+
+        let (vocab, id_to_token) = Self::build_vocab(vocab_map.clone());
+
+        let merges_arr = json["model"]["merges"].as_array().unwrap();
+
+        let merges: Vec<(String, String)> = merges_arr.iter().map(|m| Self::parse_merge(m) ).collect();
 
         Self {vocab, id_to_token, merges, space_char, add_leading_space}
     }

@@ -86,10 +86,10 @@ impl Gpu {
     }
 
     pub fn upload(&self, data: &Arrf32, weight_name: &str) -> CudaSlice<f32> {
-        let (free, total) = self.mem_info();
-        let size_mb = (data.len() * 4) as f64 / 1024.0 / 1024.0;
-        let free_mb = free as f64 / 1024.0 / 1024.0;
-        println!("GPU {} upload: {:60} {:8.1} MB  (free: {:.0}/{:.0} MB)", self.gpu_index, weight_name, size_mb, free_mb, total as f64 / 1024.0 / 1024.0);
+        //let (free, total) = self.mem_info();
+        //let size_mb = (data.len() * 4) as f64 / 1024.0 / 1024.0;
+        //let free_mb = free as f64 / 1024.0 / 1024.0;
+        //println!("GPU {} upload: {:60} {:8.1} MB  (free: {:.0}/{:.0} MB)", self.gpu_index, weight_name, size_mb, free_mb, total as f64 / 1024.0 / 1024.0);
         self.dev.htod_sync_copy(data).unwrap()
     }
 }

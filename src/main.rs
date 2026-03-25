@@ -13,10 +13,12 @@ mod tests;
 use crate::gpu::Gpu;
 use crate::tests::gpt2_tests::gpt2_tests;
 use crate::tests::llama_tests::llama_tests;
-use crate::tests::qwen_tests::qwen_tests;
+use crate::tests::qwen_tests::{qwen3_tests, qwen_tests};
 
 fn main() {
     let gpus = &Gpu::multiple(3);
+
+    qwen3_tests(gpus);
 
     qwen_tests(gpus);
 
