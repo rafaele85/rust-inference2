@@ -39,24 +39,25 @@ pub struct GenerateArgs<'a> {
     pub prompt: &'a str,
     pub tokenizer: &'a BpeTokenizer,
     pub max_tokens: usize,
-    pub kv_cache: &'a mut KVCache,
     pub gpu: &'a Gpu,
     pub eos_token_id: u32,
+    pub num_layers: usize,
 }
 
 pub fn generate(args: GenerateArgs, model: &impl Model) -> String {
-    let GenerateArgs {prompt, tokenizer, max_tokens, kv_cache, gpu, eos_token_id} = args;
+    let GenerateArgs {prompt, tokenizer, max_tokens, gpu, eos_token_id, num_layers} = args;
+
+    let mut kv_cache = KVCache::new(num_layers);
+
     let input_ids = tokenizer.encode(prompt);
 
-    println!("input ids: {:?}", input_ids);
-
-    let last_generated = initial_fill(&input_ids, model, kv_cache, gpu);
+    let last_generated = initial_fill(&input_ids, model, &mut kv_cache, gpu);
 
     let mut all_ids = input_ids.clone();
     all_ids.push(last_generated);
 
     for _ in 0..max_tokens {
-        let res = generate_single_pass(&mut all_ids, model, eos_token_id, kv_cache, gpu);
+        let res = generate_single_pass(&mut all_ids, model, eos_token_id, &mut kv_cache, gpu);
         if res {
             break;
         }

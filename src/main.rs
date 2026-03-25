@@ -9,7 +9,6 @@ mod tokenizer;
 mod generate;
 
 use crate::gpu::Gpu;
-use crate::kv_cache::KVCache;
 use arch::safetensors::SafeTensor;
 use crate::arch::gpt2::gpt2::GPT2Model;
 use crate::arch::llama::llama::LlamaModel;
@@ -30,12 +29,10 @@ fn main() {
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
 
-    let mut kv_cache_llama = KVCache::new(llama_model.config.num_hidden_layers);
-
     let prompt = "<|system|>\nYou are a helpful assistant.</s>\n<|user|>\nWhat is the capital of France?</s>\n<|assistant|>\n";
     let max_tokens = 200;
     let result = generate(GenerateArgs {
-        prompt, tokenizer: &llama_tokenizer, max_tokens, kv_cache: &mut kv_cache_llama, gpu: &gpu, eos_token_id: llama_model.config.eos_token_id
+        prompt, tokenizer: &llama_tokenizer, max_tokens, gpu: &gpu, eos_token_id: llama_model.config.eos_token_id, num_layers: llama_model.config.num_hidden_layers
     }, &llama_model);
     println!("LLama: {}", result);
 
@@ -50,14 +47,11 @@ fn main() {
     let mut safe_tensor_gpt2 = SafeTensor::open("model");
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
-    let mut gpt2_kv_cache = KVCache::new(gpt2_model.config.n_layer);
-
-
     let prompt = "The capital of France is";
     let max_tokens = 50;
 
     let result = generate(GenerateArgs {
-        prompt, tokenizer: &gpt2_tokenizer, max_tokens, kv_cache: &mut gpt2_kv_cache, gpu: &gpu, eos_token_id: gpt2_model.config.eos_token_id
+        prompt, tokenizer: &gpt2_tokenizer, max_tokens, gpu: &gpu, eos_token_id: gpt2_model.config.eos_token_id, num_layers: gpt2_model.config.n_layer
     }, &gpt2_model);
     println!("GPT-2: {}", result);
 
