@@ -4,8 +4,8 @@ use crate::gpu::Gpu;
 use crate::kv_cache::{KVCache, PositionKVVectors};
 use crate::linear::add_to_vector;
 use crate::matmul::matmul_transposed;
-use crate::arch::llama::llama::LlamaLayer;
 use crate::arch::llama::llama_config::LlamaConfig;
+use crate::arch::llama::llama_layer::LlamaLayer;
 use crate::arch::llama::rope::{apply_rope, compute_rope_freqs};
 
 pub struct ComputeQKVArgs<'a> {

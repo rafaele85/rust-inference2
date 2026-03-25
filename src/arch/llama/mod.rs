@@ -7,3 +7,4 @@ mod llama_activation;
 mod rope;
 mod llama_norm;
 mod llama_linear;
+mod llama_layer;

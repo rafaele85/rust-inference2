@@ -8,3 +8,4 @@ mod gpt2_linear;
 mod gpt2_norm;
 mod gpt2_matmul;
 mod gpt2_activation;
+mod gpt2_layer;
