@@ -12,20 +12,22 @@ use crate::gpu::Gpu;
 use arch::safetensors::SafeTensor;
 use crate::arch::gpt2::gpt2::GPT2Model;
 use crate::arch::llama::llama::LlamaModel;
+use crate::arch::safetensors::resolve_hf_path;
 use crate::generate::{generate, GenerateArgs};
 use crate::tokenizer::BpeTokenizer;
 
 fn main() {
     let gpu = Gpu::new(0);
 
-
+    let llama_base_path = &resolve_hf_path("TinyLlama/TinyLlama-1.1B-Chat-v1.0");
     let llama_tokenizer = BpeTokenizer::load(
-        "/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
+        llama_base_path,
+//        "/home/rambo/.cache/huggingface/hub/models--/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
         "\u{2581}".to_string(),
         true
     );
 
-    let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
+    let mut safe_tensor_llama = SafeTensor::open(llama_base_path);
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
 
@@ -39,12 +41,13 @@ fn main() {
 
     //-----------GPT2-------------
 
+    let gpt2_base_path = "model";
     let gpt2_tokenizer = BpeTokenizer::load(
-        "model/tokenizer.json",
+        gpt2_base_path,
         "\u{0120}".to_string(),
         false
     );
-    let mut safe_tensor_gpt2 = SafeTensor::open("model");
+    let mut safe_tensor_gpt2 = SafeTensor::open(gpt2_base_path);
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
     let prompt = "The capital of France is";

@@ -10,7 +10,8 @@ pub struct BpeTokenizer {
 }
 
 impl BpeTokenizer {
-    pub fn load(path: &str, space_char: String, add_leading_space: bool) -> Self {
+    pub fn load(base_path: &str, space_char: String, add_leading_space: bool) -> Self {
+        let path = format!("{}/{}", base_path, "tokenizer.json");
         let content = fs::read_to_string(&path).expect(&format!("Failed to read file {}", path));
         let json:serde_json::Value = serde_json::from_str(&content).expect(&format!("Failed to parse file {}", path));
         let vocab_map = json["model"]["vocab"].as_object().unwrap();

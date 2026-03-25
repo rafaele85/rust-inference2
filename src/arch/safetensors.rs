@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::{Read};
 
@@ -53,3 +54,14 @@ impl SafeTensor {
     }
 }
 
+pub fn resolve_hf_path(model_name: &str) -> String {
+    let home = env::var("HOME").expect("HOME env var missing");
+    let sanitized = model_name.replace("/", "--");
+    let model_dir = format!("{}/.cache/huggingface/hub/models--{}", home, sanitized);
+    let ref_path = format!("{}/refs/main", model_dir);
+    let hash = std::fs::read_to_string(&ref_path).expect(&format!("Failed to read file {}", &ref_path))
+        .trim().to_string();
+    let res = format!("{}/snapshots/{}", model_dir, hash);
+
+    res
+}
