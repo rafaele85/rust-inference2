@@ -6,8 +6,6 @@ use crate::arch::common::{load_all_layers, LoadLayer};
 use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::safetensors::SafeTensor;
 
-
-
 pub fn load_tensor(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     if !safe_tensor.entries.contains_key(name) {
         panic!("NOT FOUND KEY {}", name);
@@ -26,6 +24,27 @@ pub fn load_tensor(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
             f32::from_bits((bits as u32) << 16)
         })
         .collect();
+
+    result
+}
+
+pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+    if !safe_tensor.entries.contains_key(name) {
+        panic!("NOT FOUND KEY {}", name);
+    }
+
+    let entry = &safe_tensor.entries[name];
+    let start = safe_tensor.data_offset + entry.offsets[0];
+    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
+
+    let mut bytes = vec![0u8; byte_len];
+    safe_tensor.file.seek(Start(start)).unwrap();
+    safe_tensor.file.read_exact(&mut bytes).expect("Failed to read file");
+
+    let result = bytes.chunks_exact(2).map(|c| {
+        let bits = u16::from_le_bytes(c.try_into().unwrap());
+        f32::from_bits((bits as u32) << 16)
+    }).collect();
 
     result
 }
@@ -49,9 +68,9 @@ impl LlamaModel {
     pub fn new(safe_tensor: &mut SafeTensor, gpu: &Gpu) -> Self {
         let config = LlamaConfig::load(&format!("{}/config.json", safe_tensor.path_to_model_dir));
         let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpu);
-        let embed_weights = safe_tensor.load_tensor_bf16("model.embed_tokens.weight");
-        let final_norm_w = safe_tensor.load_tensor_bf16("model.norm.weight");
-        let lm_head_w  = gpu.upload(&safe_tensor.load_tensor_bf16("lm_head.weight") );
+        let embed_weights = load_tensor_bf16(safe_tensor, "model.embed_tokens.weight");
+        let final_norm_w = load_tensor_bf16(safe_tensor,"model.norm.weight");
+        let lm_head_w  = gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight") );
 
         Self {layers, config, embed_weights, final_norm_w, lm_head_w}
     }

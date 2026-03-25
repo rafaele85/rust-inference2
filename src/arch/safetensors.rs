@@ -14,19 +14,21 @@ pub struct SafeTensor {
     pub path_to_model_dir: String
 }
 impl SafeTensor {
-    pub fn open(path_to_model_dir: &str) -> Self {
-        let path_to_safetensors = &format!("{}/model.safetensors", &path_to_model_dir);
-        let mut safetensors_file = File::open(path_to_safetensors).expect(&format!("Failed to open file {}", &path_to_safetensors));
+    fn read_header(safetensor_file: &mut File, ) -> (u64, HashMap<String, serde_json::value::Value>)  {
         let mut buf = [0u8; 8];
-        safetensors_file.read_exact(&mut buf).expect("Failed to read file");
+        safetensor_file.read_exact(&mut buf).expect("Failed to read file");
         let header_len = u64::from_le_bytes(buf);
         let mut header_bytes = vec![0u8; header_len as usize];
-        safetensors_file.read_exact(&mut header_bytes).expect("Failed to read file");
+        safetensor_file.read_exact(&mut header_bytes).expect("Failed to read file");
         let header_str = String::from_utf8(header_bytes).expect("Invalid UTF-8");
         let json: HashMap<String, serde_json::Value> = serde_json::from_str(&header_str).expect("Invalid JSON");
 
+        (header_len, json)
+    }
+
+    fn prepare_entries(header: HashMap<String, serde_json::value::Value>) -> HashMap<String, TensorEntry> {
         let mut entries = HashMap::new();
-        for (name, value) in &json {
+        for (name, value) in &header {
             if name == "__metadata__" {
                 continue;
             }
@@ -37,31 +39,19 @@ impl SafeTensor {
             entries.insert(name.clone(), tensor_entry);
         }
 
+        entries
+    }
+
+    pub fn open(path_to_model_dir: &str) -> Self {
+        let path_to_safetensors = &format!("{}/model.safetensors", &path_to_model_dir);
+        let mut safetensors_file = File::open(path_to_safetensors).expect(&format!("Failed to open file {}", &path_to_safetensors));
+
+        let (header_len, header) = SafeTensor::read_header(&mut safetensors_file);
+        let entries = Self::prepare_entries(header);
+
         let data_offset = 8 + header_len;
 
         SafeTensor { file: safetensors_file, data_offset, entries, path_to_model_dir: path_to_model_dir.to_string() }
-    }
-
-
-    pub fn load_tensor_bf16(&mut self, name: &str) -> Vecf32 {
-        if !self.entries.contains_key(name) {
-            panic!("NOT FOUND KEY {}", name);
-        }
-
-        let entry = &self.entries[name];
-        let start = self.data_offset + entry.offsets[0];
-        let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
-
-        let mut bytes = vec![0u8; byte_len];
-        self.file.seek(Start(start)).unwrap();
-        self.file.read_exact(&mut bytes).expect("Failed to read file");
-
-        let result = bytes.chunks_exact(2).map(|c| {
-            let bits = u16::from_le_bytes(c.try_into().unwrap());
-            f32::from_bits((bits as u32) << 16)
-        }).collect();
-
-        result
     }
 }
 
