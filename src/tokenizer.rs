@@ -80,10 +80,26 @@ impl BpeTokenizer {
         false
     }
 
-    fn tokens_to_ids(&self, tokens: Vec<String>) -> Vec<u32> {
-        let res = tokens.iter().map(|t| {
-            *self.vocab.get(t).expect(&format!("vocab entry for {} not found", t))
+    fn hex_to_id(&self, t: &String) -> Vec<u32> {
+        let bytes = t.as_bytes();
+        let result = bytes.iter().map(|&b| {
+            let hex = format!("<0x{:02X}>", b);
+            let res = *self.vocab.get(&hex).expect(&format!("vocab entry for {} not found", t));
+            res
         }).collect();
+        result
+    }
+
+    fn token_to_ids(&self, t: &String) -> Vec<u32> {
+        if let Some(&id) = self.vocab.get(t) {
+            vec![id]
+        } else {
+            self.hex_to_id(t)
+        }
+    }
+
+    fn tokens_to_ids(&self, tokens: Vec<String>) -> Vec<u32> {
+        let res = tokens.iter().flat_map(|t| self.token_to_ids(t)).collect();
 
         res
     }

@@ -5,7 +5,9 @@ use crate::arch::common::{load_all_layers, LoadLayer};
 use crate::arch::safetensors::SafeTensor;
 use std::io::{Read, Seek};
 use crate::arch::gpt2::gpt2_config::GPT2Config;
+use crate::arch::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
 use crate::arch::gpt2::gpt2_vocab::{Gpt2Vocab};
+use crate::generate::{GenerateNextTokenArgs, Model};
 
 pub fn load_tensor(model: &mut SafeTensor, name: &str) -> Vecf32 {
     if !model.entries.contains_key(name) {
@@ -85,5 +87,13 @@ impl GPT2Model {
         let vocab = Gpt2Vocab::load(&format!("{}/vocab.json", safe_tensors.path_to_model_dir));
 
         Self {wte, wte_gpu, wpe, ln_f_w, ln_f_b, layers,vocab, config}
+    }
+}
+
+impl Model for GPT2Model {
+    fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
+        let GenerateNextTokenArgs { token_id, position, kv_cache, gpu} = args;
+        let res = gpt2_generate_token(GPT2GenerateTokenArgs {token_id, position, kv_cache, gpu, model: self});
+        res
     }
 }

@@ -4,7 +4,9 @@ use crate::common_types::{Vecf32, Weight};
 use crate::gpu::Gpu;
 use crate::arch::common::{load_all_layers, LoadLayer};
 use crate::arch::llama::llama_config::LlamaConfig;
+use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
 use crate::arch::safetensors::SafeTensor;
+use crate::generate::{GenerateNextTokenArgs, Model};
 
 pub fn load_tensor(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     if !safe_tensor.entries.contains_key(name) {
@@ -73,6 +75,15 @@ impl LlamaModel {
         let lm_head_w  = gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight") );
 
         Self {layers, config, embed_weights, final_norm_w, lm_head_w}
+    }
+}
+
+
+impl Model for LlamaModel {
+    fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
+        let GenerateNextTokenArgs { token_id, position, kv_cache, gpu} = args;
+        let res = llama_generate_token(LlamaGenerateTokenArgs {token_id, position, kv_cache, gpu, model: self});
+        res
     }
 }
 

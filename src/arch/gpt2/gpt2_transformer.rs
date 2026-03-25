@@ -71,33 +71,34 @@ pub struct GPT2GenerateTokenArgs<'a> {
     pub position: usize,
     pub kv_cache: &'a mut KVCache,
     pub gpu: &'a Gpu,
-    pub gpt2_model: &'a GPT2Model
+    pub model: &'a GPT2Model
 }
 pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {
     let GPT2GenerateTokenArgs {
         token_id, position,
         kv_cache,
-        gpu, gpt2_model
+        gpu, model
     } = args;
 
-    let wte_start = token_id * gpt2_model.config.n_embd;
-    let wpe_start = position * gpt2_model.config.n_embd;
-    let wte_row = &gpt2_model.wte[wte_start..wte_start + gpt2_model.config.n_embd];
-    let wpe_row = &gpt2_model.wpe[wpe_start..wpe_start + gpt2_model.config.n_embd];
-    let qkv_size = gpt2_model.config.n_embd * 3;
+    let config = &model.config;
+    let wte_start = token_id * model.config.n_embd;
+    let wpe_start = position * model.config.n_embd;
+    let wte_row = &model.wte[wte_start..wte_start + config.n_embd];
+    let wpe_row = &model.wpe[wpe_start..wpe_start + config.n_embd];
+    let qkv_size = config.n_embd * 3;
 
     let mut hidden = gpt2_combine_embedding_weights(wte_row, wpe_row);
 
-    for layer_no in 0..gpt2_model.config.n_layer {
-        let layer = &gpt2_model.layers[layer_no];
+    for layer_no in 0..config.n_layer {
+        let layer = &model.layers[layer_no];
         generate_token_single_layer(GenerateTokenSingleLayerArgs {
             layer_no, layer, qkv_size, hidden: &mut hidden,
             kv_cache,
-            n_heads: gpt2_model.config.n_head, ffn_dim: gpt2_model.config.ffn_dim, dim: gpt2_model.config.n_embd, head_dim: gpt2_model.config.head_dim,
-            gpu, eps: gpt2_model.config.layer_norm_epsilon
+            n_heads: config.n_head, ffn_dim: config.ffn_dim, dim: config.n_embd, head_dim: config.head_dim,
+            gpu, eps: config.layer_norm_epsilon
         });
     }
-    let top_id = gpt2_compute_logits(GPT2ComputeLogitsArgs {hidden: &hidden, gpt2_model: &gpt2_model, last_pos: 0, dim: gpt2_model.config.n_embd, vocab_size: gpt2_model.config.vocab_size, gpu});
+    let top_id = gpt2_compute_logits(GPT2ComputeLogitsArgs {hidden: &hidden, gpt2_model: &model, last_pos: 0, dim: config.n_embd, vocab_size: config.vocab_size, gpu});
 
     top_id
 }

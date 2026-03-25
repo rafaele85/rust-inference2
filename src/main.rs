@@ -13,98 +13,52 @@ use crate::kv_cache::KVCache;
 use arch::safetensors::SafeTensor;
 use crate::arch::gpt2::gpt2::GPT2Model;
 use crate::arch::llama::llama::LlamaModel;
-use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
-use arch::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
+use crate::generate::{generate, GenerateArgs};
 use crate::tokenizer::BpeTokenizer;
 
 fn main() {
     let gpu = Gpu::new(0);
 
-    let gpt2_tokenizer = BpeTokenizer::load(
-        "model/tokenizer.json",
-        "\u{0120}".to_string(),
-        false
-    );
-    println!("GPT-2 vocab size: {}", gpt2_tokenizer.vocab.len());
-    let ids = gpt2_tokenizer.encode("The capital of France is");
-    println!("gpt2 encode: {:?}", ids);
-
-    let ids = gpt2_tokenizer.encode("hello");
-    println!("gpt2 'hello': {:?}", ids);
 
     let llama_tokenizer = BpeTokenizer::load(
         "/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6/tokenizer.json",
         "\u{2581}".to_string(),
         true
     );
-    println!("Llama vocab size: {}", llama_tokenizer.vocab.len());
-    let ids = llama_tokenizer.encode("Hello world");
-    println!("llama encode: {:?}", ids);
-
-    println!("gpt2 decode: '{}'", gpt2_tokenizer.decode(&vec![464, 3139, 286, 4881, 318]));
-    println!("llama decode: '{}'", llama_tokenizer.decode(&vec![15043, 3186]));
 
     let mut safe_tensor_llama = SafeTensor::open("/home/rambo/.cache/huggingface/hub/models--TinyLlama--TinyLlama-1.1B-Chat-v1.0/snapshots/fe8a4ea1ffedaf415f4da2f062534de366a451e6");
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
-    println!("llama eos: {}", llama_model.config.eos_token_id);
 
     let mut kv_cache_llama = KVCache::new(llama_model.config.num_hidden_layers);
 
-    let mut token_ids: Vec<usize> = vec![1];
-    for i in 0..10 {
-        let last_id = *token_ids.last().unwrap();
-        let output_id = llama_generate_token(LlamaGenerateTokenArgs {
-            model: &llama_model,
-            token_id: last_id,
-            position: i,
-            gpu: &gpu,
-            kv_cache: &mut kv_cache_llama,
-        });
-        println!("pos={} id={}", i, output_id);
-        token_ids.push(output_id)
-    }
-
+    let prompt = "<|system|>\nYou are a helpful assistant.</s>\n<|user|>\nWhat is the capital of France?</s>\n<|assistant|>\n";
+    let max_tokens = 200;
+    let result = generate(GenerateArgs {
+        prompt, tokenizer: &llama_tokenizer, max_tokens, kv_cache: &mut kv_cache_llama, gpu: &gpu, eos_token_id: llama_model.config.eos_token_id
+    }, &llama_model);
+    println!("LLama: {}", result);
 
 
     //-----------GPT2-------------
 
+    let gpt2_tokenizer = BpeTokenizer::load(
+        "model/tokenizer.json",
+        "\u{0120}".to_string(),
+        false
+    );
     let mut safe_tensor_gpt2 = SafeTensor::open("model");
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
-    println!("Begin generation");
-    println!("gpt2 eos: {}", gpt2_model.config.eos_token_id);
+    let mut gpt2_kv_cache = KVCache::new(gpt2_model.config.n_layer);
 
-    let mut kv_cache = KVCache::new(gpt2_model.config.n_layer);
 
-    let mut token_ids: Vec<usize> = gpt2_model.vocab.encode("The capital of France is");
-    let seq_len = token_ids.len();
+    let prompt = "The capital of France is";
+    let max_tokens = 50;
 
-    let mut first_generated = 0;
-    for pos in 0..seq_len {
-        let id = token_ids[pos];
-        let top_id = gpt2_generate_token(GPT2GenerateTokenArgs {
-            token_id: id, position: pos,
-            kv_cache: &mut kv_cache, gpu: &gpu, gpt2_model: &gpt2_model
-        });
-        first_generated = top_id;
-    }
-    token_ids.push(first_generated);
-
-    for _ in 0..49 {
-        let seq_len = token_ids.len();
-        let pos = seq_len - 1;
-        let last_id = *token_ids.last().unwrap();
-        let top_id = gpt2_generate_token(GPT2GenerateTokenArgs {
-            token_id: last_id, position: pos,
-            gpt2_model: &gpt2_model, kv_cache: &mut kv_cache, gpu: &gpu
-        });
-        token_ids.push(top_id);
-    }
-
-    let output: Vec<String> = token_ids.iter().map(|&id| gpt2_model.vocab.decode(id)).collect();
-    let text = output.join("");
-    println!("{}", text);
-
+    let result = generate(GenerateArgs {
+        prompt, tokenizer: &gpt2_tokenizer, max_tokens, kv_cache: &mut gpt2_kv_cache, gpu: &gpu, eos_token_id: gpt2_model.config.eos_token_id
+    }, &gpt2_model);
+    println!("GPT-2: {}", result);
 
 }
