@@ -1,9 +1,7 @@
-use std::io::SeekFrom::Start;
 use crate::arch::common::LoadLayer;
 use crate::arch::safetensors::SafeTensor;
 use crate::common_types::{Vecf32, Weight};
 use crate::gpu::Gpu;
-use std::io::{Read, Seek};
 
 pub fn load_tensor(model: &mut SafeTensor, name: &str) -> Vecf32 {
     if !model.entries.contains_key(name) {
@@ -11,12 +9,10 @@ pub fn load_tensor(model: &mut SafeTensor, name: &str) -> Vecf32 {
     }
     let entry = &model.entries[name];
     let shard_idx = entry.shard_idx;
-    let start = model.data_offsets[shard_idx] + entry.offsets[0];
+    let start = model.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
     let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
-    let mut bytes = vec![0u8; byte_len];
-    model.files[shard_idx].seek(Start(start)).unwrap();
-    model.files[shard_idx].read_exact(&mut bytes).expect("Failed to read file");
+    let bytes = &model.mmaps[shard_idx][start..start+byte_len];
 
     let result = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
 

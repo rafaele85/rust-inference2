@@ -1,5 +1,3 @@
-use std::io::{Read, Seek};
-use std::io::SeekFrom::Start;
 use crate::common_types::{Vecf32, Weight};
 use crate::gpu::Gpu;
 use crate::arch::common::{load_all_layers};
@@ -16,12 +14,10 @@ pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
 
     let entry = &safe_tensor.entries[name];
     let shard_idx = entry.shard_idx;
-    let start = safe_tensor.data_offsets[shard_idx] + entry.offsets[0];
+    let start = safe_tensor.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
     let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
-    let mut bytes = vec![0u8; byte_len];
-    safe_tensor.files[shard_idx].seek(Start(start)).unwrap();
-    safe_tensor.files[shard_idx].read_exact(&mut bytes).expect("Failed to read file");
+    let bytes = &safe_tensor.mmaps[shard_idx][start..start+byte_len];
 
     let result = bytes.chunks_exact(2).map(|c| {
         let bits = u16::from_le_bytes(c.try_into().unwrap());

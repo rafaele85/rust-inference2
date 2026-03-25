@@ -3,14 +3,14 @@ use std::env;
 use std::fs::{read_to_string, File};
 use std::io::{Read};
 use std::path::Path;
+use memmap2::Mmap;
 use serde_json::{Map, Value};
-
 pub struct TensorEntry {
     pub offsets: [u64; 2],
     pub shard_idx: usize,
 }
 pub struct SafeTensor {
-    pub files: Vec<File>,
+    pub mmaps: Vec<Mmap>,
     pub data_offsets: Vec<u64>,
     pub entries: HashMap<String, TensorEntry>,
     pub path_to_model_dir: String
@@ -47,14 +47,15 @@ impl SafeTensor {
 
     pub fn open(path_to_model_dir: &str) -> Self {
         let path_to_safetensors = &format!("{}/model.safetensors", &path_to_model_dir);
-        let mut safetensors_file = File::open(path_to_safetensors).expect(&format!("Failed to open file {}", &path_to_safetensors));
+        let mut file = File::open(path_to_safetensors).expect(&format!("Failed to open file {}", &path_to_safetensors));
+        let mmap = unsafe { Mmap::map(&file) }.expect(&format!("Failed to mmap file {}", &path_to_safetensors));
 
-        let (header_len, header) = SafeTensor::read_header(&mut safetensors_file);
+        let (header_len, header) = SafeTensor::read_header(&mut file);
         let entries = Self::prepare_entries(header, 0);
 
         let data_offset = 8 + header_len;
 
-        SafeTensor { files: vec![safetensors_file], data_offsets: vec![data_offset], entries, path_to_model_dir: path_to_model_dir.to_string() }
+        SafeTensor { mmaps: vec![mmap], data_offsets: vec![data_offset], entries, path_to_model_dir: path_to_model_dir.to_string() }
     }
 
     fn prepare_shard_paths(path_to_model_dir: &str, weight_map: &Map<String, Value>) -> Vec<String> {
@@ -66,7 +67,7 @@ impl SafeTensor {
 
         paths
     }
-    
+
 
     pub fn open_sharded(path_to_model_dir: &str) -> Self {
         let index_path = &format!("{}/model.safetensors.index.json", path_to_model_dir);
@@ -75,20 +76,21 @@ impl SafeTensor {
         let weight_map = index_json["weight_map"].as_object().unwrap();
         let mut entries = HashMap::new();
         let mut data_offsets = Vec::new();
-        let mut files = Vec::new();
+        let mut mmaps = Vec::new();
 
         let shard_paths = SafeTensor::prepare_shard_paths(path_to_model_dir, weight_map);
 
         for (shard_idx, shard_path) in shard_paths.iter().enumerate() {
             let mut file = File::open(shard_path).expect(&format!("Failed to open file {}", &shard_path));
+            let mmap = unsafe { Mmap::map(&file) }.expect(&format!("Failed to mmap file {}", shard_path));
             let (header_len, header) = Self::read_header(&mut file);
             let shard_entries = SafeTensor::prepare_entries(header, shard_idx);
             entries.extend(shard_entries);
             data_offsets.push(8 + header_len);
-            files.push(file);
+            mmaps.push(mmap);
         }
 
-        SafeTensor { files, data_offsets, entries, path_to_model_dir: path_to_model_dir.to_string() }
+        SafeTensor { mmaps, data_offsets, entries, path_to_model_dir: path_to_model_dir.to_string() }
     }
 
     pub fn new(path_to_model_dir: &str) -> Self {
