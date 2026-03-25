@@ -19,6 +19,10 @@ use crate::tokenizer::BpeTokenizer;
 fn main() {
     let gpu = Gpu::new(0);
 
+    let qwen_path = resolve_hf_path("Qwen/Qwen2.5-14B-Instruct");
+    let safe_tensor_qwen = SafeTensor::new(&qwen_path);
+    println!("Qwen tensors loaded: {} entries", safe_tensor_qwen.entries.len());
+
     let llama_base_path = &resolve_hf_path("TinyLlama/TinyLlama-1.1B-Chat-v1.0");
     let llama_tokenizer = BpeTokenizer::load(
         llama_base_path,
@@ -27,7 +31,7 @@ fn main() {
         true
     );
 
-    let mut safe_tensor_llama = SafeTensor::open(llama_base_path);
+    let mut safe_tensor_llama = SafeTensor::new(llama_base_path);
 
     let llama_model = LlamaModel::new(&mut safe_tensor_llama, &gpu);
 
@@ -47,7 +51,7 @@ fn main() {
         "\u{0120}".to_string(),
         false
     );
-    let mut safe_tensor_gpt2 = SafeTensor::open(gpt2_base_path);
+    let mut safe_tensor_gpt2 = SafeTensor::new(gpt2_base_path);
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, &gpu);
 
     let prompt = "The capital of France is";

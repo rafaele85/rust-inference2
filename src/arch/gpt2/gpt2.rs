@@ -13,12 +13,13 @@ pub fn load_tensor(model: &mut SafeTensor, name: &str) -> Vecf32 {
         panic!("NOT FOUND KEY {}", name);
     }
     let entry = &model.entries[name];
-    let start = model.data_offset + entry.offsets[0];
+    let shard_idx = entry.shard_idx;
+    let start = model.data_offsets[shard_idx] + entry.offsets[0];
     let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
     let mut bytes = vec![0u8; byte_len];
-    model.file.seek(Start(start)).unwrap();
-    model.file.read_exact(&mut bytes).expect("Failed to read file");
+    model.files[shard_idx].seek(Start(start)).unwrap();
+    model.files[shard_idx].read_exact(&mut bytes).expect("Failed to read file");
 
     let result = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
 

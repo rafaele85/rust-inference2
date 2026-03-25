@@ -14,12 +14,13 @@ pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     }
 
     let entry = &safe_tensor.entries[name];
-    let start = safe_tensor.data_offset + entry.offsets[0];
+    let shard_idx = entry.shard_idx;
+    let start = safe_tensor.data_offsets[shard_idx] + entry.offsets[0];
     let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
     let mut bytes = vec![0u8; byte_len];
-    safe_tensor.file.seek(Start(start)).unwrap();
-    safe_tensor.file.read_exact(&mut bytes).expect("Failed to read file");
+    safe_tensor.files[shard_idx].seek(Start(start)).unwrap();
+    safe_tensor.files[shard_idx].read_exact(&mut bytes).expect("Failed to read file");
 
     let result = bytes.chunks_exact(2).map(|c| {
         let bits = u16::from_le_bytes(c.try_into().unwrap());
