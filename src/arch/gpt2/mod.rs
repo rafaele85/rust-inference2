@@ -7,5 +7,4 @@ mod gpt2_embeddings;
 mod gpt2_linear;
 mod gpt2_norm;
 mod gpt2_matmul;
-mod gpt2_vocab;
 mod gpt2_activation;

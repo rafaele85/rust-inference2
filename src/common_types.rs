@@ -1,5 +1,4 @@
-use crate::gpu::{CudaArrf32, Gpu};
-use crate::kv_cache::KVCache;
+use crate::gpu::{CudaArrf32};
 
 pub type Vecf32 = Vec<f32>;
 
