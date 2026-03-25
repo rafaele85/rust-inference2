@@ -20,8 +20,12 @@ fn main() {
     let gpu = Gpu::new(0);
 
     let qwen_path = resolve_hf_path("Qwen/Qwen2.5-14B-Instruct");
-    let safe_tensor_qwen = SafeTensor::new(&qwen_path);
-    println!("Qwen tensors loaded: {} entries", safe_tensor_qwen.entries.len());
+    let mut safe_tensor_qwen = SafeTensor::new(&qwen_path);
+    let qwen_model = LlamaModel::new(&mut safe_tensor_qwen, &gpu);
+
+    println!("q_proj_b loaded: {}", qwen_model.layers[0].q_proj_b.is_some());
+    println!("k_proj_b loaded: {}", qwen_model.layers[0].k_proj_b.is_some());
+    println!("v_proj_b loaded: {}", qwen_model.layers[0].v_proj_b.is_some());
 
     let llama_base_path = &resolve_hf_path("TinyLlama/TinyLlama-1.1B-Chat-v1.0");
     let llama_tokenizer = BpeTokenizer::load(

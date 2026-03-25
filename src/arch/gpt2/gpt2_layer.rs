@@ -55,6 +55,15 @@ impl LoadLayer for GPT2Layer {
         let (ffn_up_w, ffn_up_b) = load_weight_bias(safe_tensor, "mlp.c_fc", layer);
         let (ffn_down_w, ffn_down_b) = load_weight_bias(safe_tensor, "mlp.c_proj", layer);
 
-        Self { ln1_w, ln1_b, qkv_w: gpu.upload(&qkv_w), qkv_b, proj_w: gpu.upload(&proj_w), proj_b, ln2_w, ln2_b, ffn_up_w: gpu.upload(&ffn_up_w), ffn_up_b, ffn_down_w: gpu.upload(&ffn_down_w), ffn_down_b }
+        Self { ln1_w, ln1_b,
+            qkv_w: gpu.upload(&qkv_w, &format!("qkv_w{}", layer)),
+            qkv_b,
+            proj_w: gpu.upload(&proj_w, &format!("proj_w{}", layer)),
+            proj_b, ln2_w, ln2_b,
+            ffn_up_w: gpu.upload(&ffn_up_w, &format!("ffn_up_w{}", layer)),
+            ffn_up_b,
+            ffn_down_w: gpu.upload(&ffn_down_w, &format!("ffn_down_w{}", layer)),
+            ffn_down_b
+        }
     }
 }

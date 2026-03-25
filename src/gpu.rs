@@ -3,6 +3,7 @@ use cudarc::cublas::CudaBlas;
 use cudarc::cublas::result::sgemm;
 use cudarc::cublas::sys::cublasOperation_t::{CUBLAS_OP_N, CUBLAS_OP_T};
 use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr, DevicePtrMut};
+use cudarc::driver::result::mem_get_info;
 use crate::common_types::{Arrf32, Vecf32};
 
 pub type CudaArrf32 = CudaSlice<f32>;
@@ -17,6 +18,11 @@ impl Gpu {
         let dev = CudaDevice::new(gpu_index).unwrap();
         let blas = CudaBlas::new(dev.clone()).unwrap();
         Gpu { dev, blas }
+    }
+
+    pub fn mem_info(&self) -> (usize, usize) {
+        let (free, total) = mem_get_info().unwrap();
+        (free, total)
     }
 
     fn sgemm(&self, input: &Arrf32, d_weight: &CudaArrf32, in_dim: usize, out_dim: usize, transpose: bool) -> Vecf32 {
@@ -60,7 +66,11 @@ impl Gpu {
         self.sgemm(input, weight, in_dim, out_dim, true)
     }
 
-    pub fn upload(&self, data: &Arrf32) -> CudaSlice<f32> {
+    pub fn upload(&self, data: &Arrf32, weight_name: &str) -> CudaSlice<f32> {
+        let (free, total) = self.mem_info();
+        let size_mb = (data.len() * 4) as f64 / 1024.0 / 1024.0;
+        let free_mb = free as f64 / 1024.0 / 1024.0;
+        println!("GPU upload: {:60} {:8.1} MB  (free: {:.0}/{:.0} MB)", weight_name, size_mb, free_mb, total as f64 / 1024.0 / 1024.0);
         self.dev.htod_sync_copy(data).unwrap()
     }
 }

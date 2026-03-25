@@ -22,7 +22,7 @@ impl GPT2Model {
     pub fn new(safe_tensors: &mut SafeTensor, gpu: &Gpu) -> Self {
         let config = GPT2Config::load(&format!("{}/config.json", safe_tensors.path_to_model_dir));
         let wte = load_tensor(safe_tensors, "wte.weight");
-        let wte_gpu = gpu.upload(&wte);
+        let wte_gpu = gpu.upload(&wte, "wte_gpu");
         let wpe = load_tensor(safe_tensors, "wpe.weight");
         let ln_f_w = load_tensor(safe_tensors, "ln_f.weight");
         let ln_f_b = load_tensor(safe_tensors, "ln_f.bias");

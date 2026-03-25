@@ -47,7 +47,7 @@ impl LlamaModel {
         let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpu);
         let embed_weights = load_tensor_bf16(safe_tensor, "model.embed_tokens.weight");
         let final_norm_w = load_tensor_bf16(safe_tensor,"model.norm.weight");
-        let lm_head_w  = gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight") );
+        let lm_head_w  = gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight"), "lm_head_w" );
 
         Self {layers, config, embed_weights, final_norm_w, lm_head_w}
     }
