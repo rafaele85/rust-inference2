@@ -8,28 +8,6 @@ use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateT
 use crate::arch::safetensors::SafeTensor;
 use crate::generate::{GenerateNextTokenArgs, Model};
 
-pub fn load_tensor(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
-    if !safe_tensor.entries.contains_key(name) {
-        panic!("NOT FOUND KEY {}", name);
-    }
-    let entry = &safe_tensor.entries[name];
-    let start = safe_tensor.data_offset + entry.offsets[0];
-    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
-
-    let mut bytes = vec![0u8; byte_len];
-    safe_tensor.file.seek(Start(start)).unwrap();
-    safe_tensor.file.read_exact(&mut bytes).expect("Failed to read file");
-
-    let result = bytes.chunks_exact(2)
-        .map(|c| {
-            let bits = u16::from_le_bytes(c.try_into().unwrap());
-            f32::from_bits((bits as u32) << 16)
-        })
-        .collect();
-
-    result
-}
-
 pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     if !safe_tensor.entries.contains_key(name) {
         panic!("NOT FOUND KEY {}", name);
@@ -54,7 +32,7 @@ pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
 
 fn load_weight(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
     let prefix = format!("model.layers.{}", layer);
-    let w = load_tensor(safe_tensor, &format!("{}.{}.weight", prefix, name));
+    let w = load_tensor_bf16(safe_tensor, &format!("{}.{}.weight", prefix, name));
     w
 }
 
