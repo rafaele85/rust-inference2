@@ -1,7 +1,7 @@
 use crate::arch::gpt2::gpt2_attention::{gpt2_cached_attention, gpt2_extract_qkv, GPT2CachedAttentionArgs, GPT2QKV};
 use crate::common_types::{Vecf32};
 use crate::arch::gpt2::gpt2_embeddings::gpt2_combine_embedding_weights;
-use crate::gpu::Gpu;
+use crate::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::kv_cache::KVCache;
 use crate::arch::gpt2::gpt2_linear::{normalize_and_project, project_and_residual, NormalizeAndProject, ProjectAndResidualArgs};
 use crate::arch::gpt2::gpt2_logits::{gpt2_compute_logits, GPT2ComputeLogitsArgs};
@@ -71,14 +71,14 @@ pub struct GPT2GenerateTokenArgs<'a> {
     pub token_id: usize,
     pub position: usize,
     pub kv_cache: &'a mut KVCache,
-    pub gpu: &'a Gpu,
+    pub gpus: &'a Vec<Gpu>,
     pub model: &'a GPT2Model
 }
 pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {
     let GPT2GenerateTokenArgs {
         token_id, position,
         kv_cache,
-        gpu, model
+        gpus, model
     } = args;
 
     let config = &model.config;
@@ -92,6 +92,7 @@ pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {
 
     for layer_no in 0..config.n_layer {
         let layer = &model.layers[layer_no];
+        let gpu = get_gpu(gpus, layer_no, config.n_layer);
         generate_token_single_layer(GenerateTokenSingleLayerArgs {
             layer_no, layer, qkv_size, hidden: &mut hidden,
             kv_cache,
@@ -99,7 +100,8 @@ pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {
             gpu, eps: config.layer_norm_epsilon
         });
     }
-    let top_id = gpt2_compute_logits(GPT2ComputeLogitsArgs {hidden: &hidden, gpt2_model: &model, last_pos: 0, dim: config.n_embd, vocab_size: config.vocab_size, gpu});
+    let default_gpu = get_default_gpu(gpus, "logits");
+    let top_id = gpt2_compute_logits(GPT2ComputeLogitsArgs {hidden: &hidden, gpt2_model: &model, last_pos: 0, dim: config.n_embd, vocab_size: config.vocab_size, gpu: default_gpu});
 
     top_id
 }

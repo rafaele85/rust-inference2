@@ -1,4 +1,4 @@
-use crate::gpu::Gpu;
+use crate::gpu::{get_gpu, Gpu};
 use crate::arch::safetensors::SafeTensor;
 
 pub trait LoadLayer: Sized {
@@ -6,10 +6,10 @@ pub trait LoadLayer: Sized {
 }
 
 
-pub fn load_all_layers<L: LoadLayer>(model: &mut SafeTensor, nlayers: usize, gpu: &Gpu) -> Vec<L> {
-
+pub fn load_all_layers<L: LoadLayer>(model: &mut SafeTensor, nlayers: usize, gpus: &Vec<Gpu>) -> Vec<L> {
     let mut layers = Vec::with_capacity(nlayers);
     for i in 0..nlayers {
+        let gpu = get_gpu(gpus, i, nlayers);
         let layer = L::load_layer(model, i, gpu);
         layers.push(layer);
     }

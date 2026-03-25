@@ -1,5 +1,5 @@
 use crate::common_types::Vecf32;
-use crate::gpu::Gpu;
+use crate::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::kv_cache::{KVCache};
 use crate::linear::add_to_vector;
 use crate::matmul::matmul_transposed;
@@ -54,11 +54,11 @@ pub struct LlamaGenerateTokenArgs<'a> {
     pub position: usize,
     pub model: &'a LlamaModel,
     pub kv_cache: &'a mut KVCache,
-    pub gpu: &'a Gpu,
+    pub gpus: &'a Vec<Gpu>,
 }
 
 pub fn llama_generate_token(args: LlamaGenerateTokenArgs) -> usize {
-    let LlamaGenerateTokenArgs {token_id, position, model, kv_cache, gpu} = args;
+    let LlamaGenerateTokenArgs {token_id, position, model, kv_cache, gpus} = args;
     let LlamaModel {config, embed_weights, layers, final_norm_w, lm_head_w, ..} = model;
     let token_start = token_id * config.hidden_size;
     let embed_token = &embed_weights[token_start..token_start + config.hidden_size];
@@ -66,18 +66,20 @@ pub fn llama_generate_token(args: LlamaGenerateTokenArgs) -> usize {
     let mut hidden = embed_token.to_vec();
 
     for i in 0..config.num_hidden_layers {
+        let gpu = get_gpu(gpus, i, config.num_hidden_layers);
         llama_layer(LlamaLayerArgs {
             kv_cache,
             layer: &layers[i],
             config,
             layer_no: i,
             position,
-            gpu: &gpu,
+            gpu,
             hidden: &mut hidden
         });
     }
 
-    let output_token_id = llama_logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, gpu);
+    let default_gpu = get_default_gpu(gpus, "logits");
+    let output_token_id = llama_logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
 
     output_token_id
 }

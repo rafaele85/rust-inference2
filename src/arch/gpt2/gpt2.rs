@@ -19,14 +19,14 @@ pub struct GPT2Model {
 }
 
 impl GPT2Model {
-    pub fn new(safe_tensors: &mut SafeTensor, gpu: &Gpu) -> Self {
+    pub fn new(safe_tensors: &mut SafeTensor, gpus: &Vec<Gpu>) -> Self {
         let config = GPT2Config::load(&format!("{}/config.json", safe_tensors.path_to_model_dir));
         let wte = load_tensor(safe_tensors, "wte.weight");
-        let wte_gpu = gpu.upload(&wte, "wte_gpu");
+        let wte_gpu = gpus[0].upload(&wte, "wte_gpu");
         let wpe = load_tensor(safe_tensors, "wpe.weight");
         let ln_f_w = load_tensor(safe_tensors, "ln_f.weight");
         let ln_f_b = load_tensor(safe_tensors, "ln_f.bias");
-        let layers = load_all_layers(safe_tensors, config.n_layer, &gpu);
+        let layers = load_all_layers(safe_tensors, config.n_layer, &gpus);
 
 
         Self {wte, wte_gpu, wpe, ln_f_w, ln_f_b, layers, config}
@@ -35,8 +35,8 @@ impl GPT2Model {
 
 impl Model for GPT2Model {
     fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
-        let GenerateNextTokenArgs { token_id, position, kv_cache, gpu} = args;
-        let res = gpt2_generate_token(GPT2GenerateTokenArgs {token_id, position, kv_cache, gpu, model: self});
+        let GenerateNextTokenArgs { token_id, position, kv_cache, gpus} = args;
+        let res = gpt2_generate_token(GPT2GenerateTokenArgs {token_id, position, kv_cache, gpus, model: self});
         res
     }
 }

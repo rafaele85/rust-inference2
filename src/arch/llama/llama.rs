@@ -42,12 +42,12 @@ pub struct LlamaModel {
 }
 
 impl LlamaModel {
-    pub fn new(safe_tensor: &mut SafeTensor, gpu: &Gpu) -> Self {
+    pub fn new(safe_tensor: &mut SafeTensor, gpus: &Vec<Gpu>) -> Self {
         let config = LlamaConfig::load(&format!("{}/config.json", safe_tensor.path_to_model_dir));
-        let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpu);
+        let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpus);
         let embed_weights = load_tensor_bf16(safe_tensor, "model.embed_tokens.weight");
         let final_norm_w = load_tensor_bf16(safe_tensor,"model.norm.weight");
-        let lm_head_w  = gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight"), "lm_head_w" );
+        let lm_head_w  = gpus[0].upload(&load_tensor_bf16(safe_tensor, "lm_head.weight"), "lm_head_w" );
 
         Self {layers, config, embed_weights, final_norm_w, lm_head_w}
     }
@@ -56,8 +56,8 @@ impl LlamaModel {
 
 impl Model for LlamaModel {
     fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
-        let GenerateNextTokenArgs { token_id, position, kv_cache, gpu} = args;
-        let res = llama_generate_token(LlamaGenerateTokenArgs {token_id, position, kv_cache, gpu, model: self});
+        let GenerateNextTokenArgs { token_id, position, kv_cache, gpus} = args;
+        let res = llama_generate_token(LlamaGenerateTokenArgs {token_id, position, kv_cache, gpus, model: self});
         res
     }
 }

@@ -9,15 +9,34 @@ use crate::common_types::{Arrf32, Vecf32};
 pub type CudaArrf32 = CudaSlice<f32>;
 
 pub struct Gpu {
+    pub gpu_index: usize,
     pub dev: Arc<CudaDevice>,
     pub blas: CudaBlas,
 }
 
+pub fn get_gpu(gpus: &Vec<Gpu>, layer_no: usize, num_layers: usize) -> &Gpu {
+    let gpu_idx = layer_no * gpus.len() / num_layers;
+
+    &gpus[gpu_idx]
+}
+
+
+pub fn get_default_gpu<'a>(gpus: &'a Vec<Gpu>, _purpose: &str) -> &'a Gpu {
+    &gpus[0]
+}
+
 impl Gpu {
+
+    pub fn multiple(num_gpus: usize) -> Vec<Gpu> {
+        let gpus = (0..num_gpus).map(|x| Gpu::new(x)).collect::<Vec<_>>();
+
+        gpus
+    }
+
     pub fn new(gpu_index: usize) -> Self {
         let dev = CudaDevice::new(gpu_index).unwrap();
         let blas = CudaBlas::new(dev.clone()).unwrap();
-        Gpu { dev, blas }
+        Gpu { dev, blas, gpu_index }
     }
 
     pub fn mem_info(&self) -> (usize, usize) {
@@ -70,7 +89,7 @@ impl Gpu {
         let (free, total) = self.mem_info();
         let size_mb = (data.len() * 4) as f64 / 1024.0 / 1024.0;
         let free_mb = free as f64 / 1024.0 / 1024.0;
-        println!("GPU upload: {:60} {:8.1} MB  (free: {:.0}/{:.0} MB)", weight_name, size_mb, free_mb, total as f64 / 1024.0 / 1024.0);
+        println!("GPU {} upload: {:60} {:8.1} MB  (free: {:.0}/{:.0} MB)", self.gpu_index, weight_name, size_mb, free_mb, total as f64 / 1024.0 / 1024.0);
         self.dev.htod_sync_copy(data).unwrap()
     }
 }
