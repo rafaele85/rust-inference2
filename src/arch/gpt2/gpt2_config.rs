@@ -9,7 +9,6 @@ pub struct GPT2Config {
     pub n_layer: usize,
     pub vocab_size: usize,
     pub layer_norm_epsilon: f32,
-    pub n_inner: Option<usize>,
     #[serde(default)]
     pub ffn_dim: usize,
     #[serde(default)]

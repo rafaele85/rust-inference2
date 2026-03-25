@@ -20,7 +20,7 @@ pub struct ComputeQKVArgs<'a> {
 
 
 
-fn compute_qkv(args: ComputeQKVArgs) -> ( Vecf32,  &PositionKVVectors, &PositionKVVectors ) {
+fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &PositionKVVectors ) {
     let ComputeQKVArgs {normed, layer, config, kv_cache, layer_no, position, gpu} = args;
     let q = matmul_transposed(&normed, &layer.q_proj_w, config.hidden_size, gpu);
     let k = matmul_transposed(&normed, &layer.k_proj_w, config.kv_dim, gpu);
