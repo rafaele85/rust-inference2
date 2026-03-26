@@ -9,6 +9,7 @@ pub fn llama_tests(gpus: &Vec<Gpu>) {
     let llama_tokenizer = BpeTokenizer::load(
         llama_base_path,
         "\u{2581}".to_string(),
+        "\u{010A}".to_string(),
         true
     );
 

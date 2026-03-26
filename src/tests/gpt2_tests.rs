@@ -10,6 +10,7 @@ pub fn gpt2_tests(gpus: &Vec<Gpu>) {
     let gpt2_tokenizer = BpeTokenizer::load(
         gpt2_base_path,
         "\u{0120}".to_string(),
+        "\u{010A}".to_string(),
         false
     );
     let mut safe_tensor_gpt2 = SafeTensor::new(gpt2_base_path);

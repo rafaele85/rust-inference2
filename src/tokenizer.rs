@@ -7,6 +7,7 @@ pub struct BpeTokenizer {
     pub id_to_token: HashMap<u32, String>,
     pub merges: Vec<(String, String)>,
     pub space_char: String,
+    pub nl_char: String,
     pub add_leading_space: bool
 }
 
@@ -34,7 +35,7 @@ impl BpeTokenizer {
             (parts[0].as_str().unwrap().to_string(), parts[1].as_str().unwrap().to_string())
         }
     }
-    pub fn load(base_path: &str, space_char: String, add_leading_space: bool) -> Self {
+    pub fn load(base_path: &str, space_char: String, nl_char: String, add_leading_space: bool) -> Self {
         let path = format!("{}/{}", base_path, "tokenizer.json");
         let content = fs::read_to_string(&path).expect(&format!("Failed to read file {}", path));
         let json: Value = serde_json::from_str(&content).expect(&format!("Failed to parse file {}", path));
@@ -46,7 +47,7 @@ impl BpeTokenizer {
 
         let merges: Vec<(String, String)> = merges_arr.iter().map(|m| Self::parse_merge(m) ).collect();
 
-        Self {vocab, id_to_token, merges, space_char, add_leading_space}
+        Self {vocab, id_to_token, merges, space_char, nl_char, add_leading_space}
     }
 
     fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
@@ -131,7 +132,10 @@ impl BpeTokenizer {
         res
     }
 
+    fn cleanup_decode(&self, s: &String) -> String {
+        s.replace(&self.space_char, " ").replace(&self.nl_char, "\n")
+    }
     pub fn decode(&self, ids: &Vec<u32>) -> String {
-        ids.iter().map(|&id| self.id_to_token[&id].replace(&self.space_char, " ")).collect::<Vec<_>>().join("").trim_start().to_string()
+        ids.iter().map(|&id| self.cleanup_decode(&self.id_to_token[&id])).collect::<Vec<_>>().join("").trim_start().to_string()
     }
 }
