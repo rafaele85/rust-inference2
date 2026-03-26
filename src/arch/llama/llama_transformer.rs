@@ -1,4 +1,4 @@
-use crate::common_types::Vecf32;
+use crate::common_types::{Vecf32, Weight};
 use crate::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::kv_cache::{KVCache};
 use crate::linear::add_to_vector;
@@ -7,23 +7,24 @@ use crate::arch::llama::llama::{LlamaModel};
 use crate::arch::llama::llama_activation::silu;
 use crate::arch::llama::llama_attention::{llama_gqa, LlamaGQAArgs};
 use crate::arch::llama::llama_config::LlamaConfig;
+use crate::arch::llama::llama_moe::{llama_moe_ffn, LlamaMoeFFN};
 use crate::arch::llama::llama_layer::LlamaLayer;
 use crate::arch::llama::llama_linear::hadamard;
 use crate::arch::llama::llama_logits::llama_logits;
 use crate::arch::llama::llama_norm::rms_norm;
 
-fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, config: &LlamaConfig, gpu: &Gpu) {
+fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &Weight, up_proj_w: &Weight, down_proj_w: &Weight, config: &LlamaConfig, gpu: &Gpu) {
     let normed2 = rms_norm(&hidden, &layer.post_norm_w, config.rms_norm_eps);
 
-    let gate = matmul_transposed(&normed2, &layer.gate_proj_w, config.intermediate_size, gpu);
+    let gate = matmul_transposed(&normed2, &gate_proj_w, config.intermediate_size, gpu);
 
-    let up = matmul_transposed(&normed2, &layer.up_proj_w, config.intermediate_size, gpu);
+    let up = matmul_transposed(&normed2, &up_proj_w, config.intermediate_size, gpu);
 
     let silu_gate = silu(&gate);
 
     let ffn_act = hadamard(silu_gate, up, config.intermediate_size);
 
-    let ffn_out = matmul_transposed(&ffn_act, &layer.down_proj_w, config.hidden_size, gpu);
+    let ffn_out = matmul_transposed(&ffn_act, &down_proj_w, config.hidden_size, gpu);
 
     add_to_vector(hidden, &ffn_out);
 }
@@ -46,7 +47,14 @@ pub fn llama_layer(args: LlamaLayerArgs) {
 
     llama_gqa(LlamaGQAArgs {config, gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
 
-    llama_ffn(hidden, layer, config, &gpu);
+    if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
+        let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
+        llama_moe_ffn(LlamaMoeFFN {hidden, normed: &normed2, router_w: &router_w, experts: &experts, config, gpu});
+    } else {
+        if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
+            llama_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, &gpu);
+        }
+    }
 }
 
 pub struct LlamaGenerateTokenArgs<'a> {

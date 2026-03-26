@@ -21,6 +21,12 @@ pub struct LlamaConfig {
     pub eos_token_id: u32,
     #[serde(default)]
     pub attn_dim: usize,
+    #[serde(default)]
+    pub num_experts_per_tok: usize,
+    #[serde(default)]
+    pub moe_intermediate_size: usize,
+    #[serde(default)]
+    pub norm_topk_prob: bool,
 }
 
 impl LlamaConfig {

@@ -8,3 +8,6 @@ mod rope;
 mod llama_norm;
 mod llama_linear;
 mod llama_layer;
+
+mod llama_moe;
+mod llama_load_weight;

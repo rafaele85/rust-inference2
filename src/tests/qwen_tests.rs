@@ -56,3 +56,31 @@ pub fn qwen3_tests(gpus: &Vec<Gpu>) {
 
     println!("Qwen3: {}", result);
 }
+
+
+pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
+    let qwen3_moe_path = resolve_hf_path("Qwen/Qwen3-30B-A3B-Instruct-2507");
+
+    let qwen3_moe_tokenizer = BpeTokenizer::load(
+        &qwen3_moe_path,
+        "\u{0120}".to_string(),
+        false
+    );
+
+    let mut qwen3_moe_safe_tensor = SafeTensor::new(&qwen3_moe_path);
+    let qwen3_moe_model = LlamaModel::new(&mut qwen3_moe_safe_tensor, &gpus);
+
+    let prompt = "The capital of France is";
+
+    let result = generate(GenerateArgs {
+        prompt,
+        tokenizer: &qwen3_moe_tokenizer,
+        max_tokens: 50,
+        gpus: &gpus,
+        eos_token_id: qwen3_moe_model.config.eos_token_id,
+        num_layers: qwen3_moe_model.config.num_hidden_layers,
+    }, &qwen3_moe_model);
+
+
+    println!("Qwen3-MoE: {}", result);
+}
