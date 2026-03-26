@@ -5,7 +5,7 @@ use cudarc::cublas::sys::cublasOperation_t::{CUBLAS_OP_N, CUBLAS_OP_T};
 use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr, DevicePtrMut};
 use cudarc::driver::result::mem_get_info;
 use half::f16;
-use crate::common_types::{Arrf16, Arrf32, Vecf16, Vecf32};
+use crate::common_types::{Arrf16, Arrf32, Vecf16, Vecf32, WeightF16};
 
 pub type CudaArrf32 = CudaSlice<f32>;
 pub type CudaArrf16 = CudaSlice<f16>;
@@ -105,6 +105,19 @@ impl Gpu {
     pub fn upload_f16_from_f32(&self, data: &Arrf32, _weight_name: &str) -> CudaSlice<f16> {
         let f16_data = f16_from_f32_arr(data);
         self.dev.htod_sync_copy(&f16_data).unwrap()
+    }
+
+    pub fn upload_f16_from_bf16(&self, bf16_bytes: &[u8], _weight_name: &str) -> WeightF16 {
+        let f16_data: Vecf16 = bf16_bytes.chunks_exact(2).map(|c| {
+            let b = c.try_into().unwrap();
+            let bits = u16::from_le_bytes(b);
+            let f32_val = f32::from_bits((bits as u32) << 16);
+            f16::from_f32(f32_val)
+        }).collect();
+
+        let res = self.dev.htod_sync_copy(&f16_data).unwrap();
+
+        res
     }
 
 

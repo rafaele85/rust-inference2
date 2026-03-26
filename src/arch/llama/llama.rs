@@ -7,7 +7,8 @@ use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateT
 use crate::arch::safetensors::SafeTensor;
 use crate::generate::{GenerateNextTokenArgs, Model};
 
-pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+
+pub fn load_tensor_bf16_raw<'a>(safe_tensor: &'a mut SafeTensor, name: &str) -> &'a [u8] {
     if !safe_tensor.entries.contains_key(name) {
         panic!("NOT FOUND KEY {}", name);
     }
@@ -18,6 +19,12 @@ pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
     let bytes = &safe_tensor.mmaps[shard_idx][start..start+byte_len];
+
+    bytes
+}
+
+pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+    let bytes = load_tensor_bf16_raw(safe_tensor, name);
 
     let result = bytes.chunks_exact(2).map(|c| {
         let bits = u16::from_le_bytes(c.try_into().unwrap());

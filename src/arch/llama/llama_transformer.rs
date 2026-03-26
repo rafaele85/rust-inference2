@@ -49,7 +49,7 @@ pub fn llama_layer(args: LlamaLayerArgs) {
 
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
-        llama_moe_ffn(LlamaMoeFFN {hidden, normed: &normed2, router_w: &router_w, experts: &experts, config, gpu});
+        llama_moe_ffn(LlamaMoeFFN {hidden, normed: &normed2, router_w: &router_w, experts: &experts, config, gpu, layer_no});
     } else {
         if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
             llama_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, &gpu);
