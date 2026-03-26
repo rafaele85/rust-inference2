@@ -4,7 +4,7 @@ use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::llama::llama_linear::hadamard;
 use crate::arch::llama::llama_load_weight::llama_load_weight;
 use crate::arch::safetensors::SafeTensor;
-use crate::common_types::{Vecf32, Weight};
+use crate::common_types::{Vecf32};
 use crate::gpu::Gpu;
 use crate::linear::{add_to_vector, scale_and_add, ScaleAndAddArgs};
 use crate::matmul::matmul_transposed;
@@ -15,7 +15,7 @@ pub struct LlamaExpert {
     pub down_proj_w: Vecf32,
 }
 
-fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &Gpu) -> Vecf32 {
+fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, _gpu: &Gpu) -> Vecf32 {
     let name = format!("mlp.experts.{}.{}", expert_no, weight_name);
     let w = llama_load_weight(safe_tensor, &name, layer_no);
     w
@@ -140,7 +140,6 @@ pub struct LlamaMoeFFN<'a> {
     pub gpu: &'a Gpu,
 }
 
-static mut MOE_DEBUG: bool = true;
 pub fn llama_moe_ffn(args: LlamaMoeFFN) {
     let LlamaMoeFFN {mut hidden, normed, router_w, experts, config, gpu } = args;
     let LlamaConfig {num_experts_per_tok, moe_intermediate_size, hidden_size,norm_topk_prob, ..} = config;
@@ -151,17 +150,6 @@ pub fn llama_moe_ffn(args: LlamaMoeFFN) {
     let (top_scores, top_indices) = get_top_scores(&scores, num_experts, *num_experts_per_tok);
 
     let mut expert_probs  = softmax(&top_scores);
-
-    let debug = unsafe { MOE_DEBUG };
-    if debug {
-        unsafe { MOE_DEBUG = false; }
-        println!("normed[:5]: {:?}", &normed[..5]);
-        println!("router scores[:10]: {:?}", &scores[..10]);
-        println!("top-8 indices: {:?}", &top_indices[..8]);
-        println!("expert_probs: {:?}", &expert_probs);
-        println!("router_w len: {}", router_w.len());
-        println!("router_w[:10]: {:?}", &router_w[..10]);
-    }
 
     if *norm_topk_prob {
         normalize_weights(&mut expert_probs);
