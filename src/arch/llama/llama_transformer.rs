@@ -1,8 +1,8 @@
-use crate::common_types::{Vecf32, Weight};
+use crate::common_types::{Vecf32, WeightF16};
 use crate::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::kv_cache::{KVCache};
 use crate::linear::add_to_vector;
-use crate::matmul::matmul_transposed;
+use crate::matmul::{matmul_transposed_f16};
 use crate::arch::llama::llama::{LlamaModel};
 use crate::arch::llama::llama_activation::silu;
 use crate::arch::llama::llama_attention::{llama_gqa, LlamaGQAArgs};
@@ -13,18 +13,18 @@ use crate::arch::llama::llama_linear::hadamard;
 use crate::arch::llama::llama_logits::llama_logits;
 use crate::arch::llama::llama_norm::rms_norm;
 
-fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &Weight, up_proj_w: &Weight, down_proj_w: &Weight, config: &LlamaConfig, gpu: &Gpu) {
+fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &LlamaConfig, gpu: &Gpu) {
     let normed2 = rms_norm(&hidden, &layer.post_norm_w, config.rms_norm_eps);
 
-    let gate = matmul_transposed(&normed2, &gate_proj_w, config.intermediate_size, gpu);
+    let gate = matmul_transposed_f16(&normed2, &gate_proj_w, config.intermediate_size, gpu);
 
-    let up = matmul_transposed(&normed2, &up_proj_w, config.intermediate_size, gpu);
+    let up = matmul_transposed_f16(&normed2, &up_proj_w, config.intermediate_size, gpu);
 
     let silu_gate = silu(&gate);
 
     let ffn_act = hadamard(silu_gate, up, config.intermediate_size);
 
-    let ffn_out = matmul_transposed(&ffn_act, &down_proj_w, config.hidden_size, gpu);
+    let ffn_out = matmul_transposed_f16(&ffn_act, &down_proj_w, config.hidden_size, gpu);
 
     add_to_vector(hidden, &ffn_out);
 }

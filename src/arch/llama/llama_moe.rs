@@ -4,21 +4,22 @@ use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::llama::llama_linear::hadamard;
 use crate::arch::llama::llama_load_weight::llama_load_weight;
 use crate::arch::safetensors::SafeTensor;
-use crate::common_types::{Vecf32};
+use crate::common_types::{Vecf32, WeightF16};
 use crate::gpu::Gpu;
 use crate::linear::{add_to_vector, scale_and_add, ScaleAndAddArgs};
-use crate::matmul::matmul_transposed;
+use crate::matmul::{matmul_transposed_f16};
 
 pub struct LlamaExpert {
-    pub gate_proj_w: Vecf32,
-    pub up_proj_w: Vecf32,
-    pub down_proj_w: Vecf32,
+    pub gate_proj_w: WeightF16,
+    pub up_proj_w: WeightF16,
+    pub down_proj_w: WeightF16,
 }
 
-fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, _gpu: &Gpu) -> Vecf32 {
+fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &Gpu) -> WeightF16 {
     let name = format!("mlp.experts.{}.{}", expert_no, weight_name);
     let w = llama_load_weight(safe_tensor, &name, layer_no);
-    w
+    let w_gpu = gpu.upload_f16_from_f32(&w, &format!("{}.{}", layer_no, weight_name));
+    w_gpu
 }
 
 fn load_expert(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, gpu: &Gpu) -> LlamaExpert {
@@ -96,16 +97,16 @@ struct ApplyExpertArgs<'a> {
 
 fn apply_expert(args: ApplyExpertArgs) {
     let ApplyExpertArgs {normed, expert, moe_intermediate_size,  gpu, hidden_size, w, mut moe_out} = args;
-    let gate_proj_w = gpu.upload(&expert.gate_proj_w, "expert_gate_proj_w" );
-    let up_proj_w = gpu.upload(&expert.up_proj_w, "expert_up_proj_w" );
-    let down_proj_w = gpu.upload(&expert.down_proj_w, "expert_down_proj_w" );
+    let gate_proj_w = &expert.gate_proj_w;
+    let up_proj_w = &expert.up_proj_w;
+    let down_proj_w = &expert.down_proj_w;
 
-    let gate = matmul_transposed(normed, &gate_proj_w, moe_intermediate_size, gpu);
-    let up = matmul_transposed(normed, &up_proj_w, moe_intermediate_size, gpu);
+    let gate = matmul_transposed_f16(normed, &gate_proj_w, moe_intermediate_size, gpu);
+    let up = matmul_transposed_f16(normed, &up_proj_w, moe_intermediate_size, gpu);
     let silu_gate = silu(&gate);
     let ffn_act = hadamard(silu_gate, up, moe_intermediate_size);
 
-    let expert_out = matmul_transposed(&ffn_act, &down_proj_w, hidden_size, gpu);
+    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, hidden_size, gpu);
     scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out, start_offset: 0, num_iterations: hidden_size});
 }
 struct ApplyExpertsArgs<'a> {

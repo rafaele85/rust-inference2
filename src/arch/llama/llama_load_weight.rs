@@ -21,7 +21,14 @@ pub fn llama_load_weight_optional(safe_tensor : &mut SafeTensor, name: &str, lay
     }
     None
 }
+
 pub fn llama_load_weight(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
+    let prefix = format!("model.layers.{}", layer);
+    let w = load_tensor_bf16(safe_tensor, &format!("{}.{}.weight", prefix, name));
+    w
+}
+
+pub fn llama_load_weight_f16(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
     let prefix = format!("model.layers.{}", layer);
     let w = load_tensor_bf16(safe_tensor, &format!("{}.{}.weight", prefix, name));
     w

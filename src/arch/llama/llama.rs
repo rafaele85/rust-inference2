@@ -1,4 +1,4 @@
-use crate::common_types::{Vecf32, Weight};
+use crate::common_types::{Vecf32, WeightF16};
 use crate::gpu::{get_default_gpu, Gpu};
 use crate::arch::common::{load_all_layers};
 use crate::arch::llama::llama_config::LlamaConfig;
@@ -34,7 +34,7 @@ pub struct LlamaModel {
     pub config: LlamaConfig,
     pub embed_weights: Vecf32,
     pub final_norm_w: Vecf32,
-    pub lm_head_w: Weight,
+    pub lm_head_w: WeightF16,
 }
 
 impl LlamaModel {
@@ -48,9 +48,10 @@ impl LlamaModel {
         let lm_head_exists = safe_tensor.entries.contains_key("lm_head.weight");
 
         let lm_head_w  = if lm_head_exists {
-            default_gpu.upload(&load_tensor_bf16(safe_tensor, "lm_head.weight"), "lm_head_w" )
+            let raw = &load_tensor_bf16(safe_tensor, "lm_head.weight");
+            default_gpu.upload_f16_from_f32(raw, "lm_head_w" )
         } else {
-            default_gpu.upload(&embed_weights, "lm_head_w" )
+            default_gpu.upload_f16_from_f32(&embed_weights, "lm_head_w" )
         };
 
         Self {layers, config, embed_weights, final_norm_w, lm_head_w}

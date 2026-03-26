@@ -3,7 +3,7 @@ use crate::common_types::Vecf32;
 use crate::gpu::Gpu;
 use crate::kv_cache::{KVCache, PositionKVVectors};
 use crate::linear::add_to_vector;
-use crate::matmul::matmul_transposed;
+use crate::matmul::{matmul_transposed_f16};
 use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::llama::llama_layer::LlamaLayer;
 use crate::arch::llama::llama_norm::rms_norm;
@@ -50,17 +50,17 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
     let LlamaLayer {q_proj_w, q_proj_b, k_proj_w, k_proj_b, v_proj_w, v_proj_b, ..} = layer;
     let LlamaConfig {kv_dim, head_dim, rope_theta, attn_dim, num_attention_heads, rms_norm_eps, num_key_value_heads,  ..} = *config;
 
-    let mut q = matmul_transposed(&normed, q_proj_w, attn_dim, gpu);
+    let mut q = matmul_transposed_f16(&normed, q_proj_w, attn_dim, gpu);
     add_optional_bias(&mut q, q_proj_b);
 
-    let mut k = matmul_transposed(&normed, k_proj_w, kv_dim, gpu);
+    let mut k = matmul_transposed_f16(&normed, k_proj_w, kv_dim, gpu);
     add_optional_bias(&mut k, k_proj_b);
 
     apply_qk_norm(ApplyQKNormArgs { vec: &mut q, norm_w: &layer.q_norm_w, num_heads: num_attention_heads, head_dim, eps: rms_norm_eps});
 
     apply_qk_norm(ApplyQKNormArgs { vec: &mut k, norm_w: &layer.k_norm_w, num_heads: num_key_value_heads, head_dim, eps: rms_norm_eps});
 
-    let mut v = matmul_transposed(&normed, v_proj_w, kv_dim, gpu);
+    let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, gpu);
     add_optional_bias(&mut v, v_proj_b);
 
     let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta, head_dim/2);
@@ -135,7 +135,7 @@ pub fn llama_gqa(args: LlamaGQAArgs) {
         }
     }
 
-    let projected = matmul_transposed(&attn_out, &layer.o_proj_w, config.hidden_size, gpu);
+    let projected = matmul_transposed_f16(&attn_out, &layer.o_proj_w, config.hidden_size, gpu);
 
     add_to_vector(hidden, &projected);
 }
