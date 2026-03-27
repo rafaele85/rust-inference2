@@ -1,3 +1,4 @@
+use crate::tokenizer::deserialize_eos_token_id;
 use std::fs::read_to_string;
 use serde::Deserialize;
 use serde_json::from_str;
@@ -13,7 +14,8 @@ pub struct GPT2Config {
     pub ffn_dim: usize,
     #[serde(default)]
     pub head_dim: usize,
-    pub eos_token_id: u32,
+    #[serde(deserialize_with = "deserialize_eos_token_id")]
+    pub eos_token_id: Vec<u32>,
 }
 
 impl GPT2Config {

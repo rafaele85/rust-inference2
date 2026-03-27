@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 
 pub struct BpeTokenizer {
@@ -137,5 +138,23 @@ impl BpeTokenizer {
     }
     pub fn decode(&self, ids: &Vec<u32>) -> String {
         ids.iter().map(|&id| self.cleanup_decode(&self.id_to_token[&id])).collect::<Vec<_>>().join("").trim_start().to_string()
+    }
+}
+
+
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum EosTokenId {
+    Single(u32),
+    Multiple(Vec<u32>)
+}
+
+pub fn deserialize_eos_token_id<'de, D>(deserializer: D) -> Result<Vec<u32>, D::Error>
+where D: Deserializer<'de>,
+{
+    match EosTokenId::deserialize(deserializer)? {
+        EosTokenId::Single(n) => Ok(vec![n]),
+        EosTokenId::Multiple(arr) => Ok(arr),
     }
 }

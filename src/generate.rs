@@ -23,9 +23,9 @@ fn initial_fill(input_ids: &Vec<u32>, model: &impl Model, kv_cache: &mut KVCache
     last_generated as u32
 }
 
-fn generate_single_pass(all_ids: &mut Vec<u32>, model: &impl Model, eos_token_id: u32, kv_cache: &mut KVCache, gpus: &Vec<Gpu>) -> bool {
+fn generate_single_pass(all_ids: &mut Vec<u32>, model: &impl Model, eos_token_id: &Vec<u32>, kv_cache: &mut KVCache, gpus: &Vec<Gpu>) -> bool {
     let last_id = *all_ids.last().unwrap();
-    if last_id == eos_token_id {
+    if eos_token_id.contains(&last_id)  {
         return true;
     }
     let pos = all_ids.len() - 1;
@@ -40,7 +40,7 @@ pub struct GenerateArgs<'a> {
     pub tokenizer: &'a BpeTokenizer,
     pub max_tokens: usize,
     pub gpus: &'a Vec<Gpu>,
-    pub eos_token_id: u32,
+    pub eos_token_id: &'a Vec<u32>,
     pub num_layers: usize,
 }
 

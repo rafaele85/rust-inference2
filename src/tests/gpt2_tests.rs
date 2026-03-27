@@ -20,7 +20,7 @@ pub fn gpt2_tests(gpus: &Vec<Gpu>) {
     let max_tokens = 50;
 
     let result = generate(GenerateArgs {
-        prompt, tokenizer: &gpt2_tokenizer, max_tokens, gpus: &gpus, eos_token_id: gpt2_model.config.eos_token_id, num_layers: gpt2_model.config.n_layer
+        prompt, tokenizer: &gpt2_tokenizer, max_tokens, gpus: &gpus, eos_token_id: &gpt2_model.config.eos_token_id, num_layers: gpt2_model.config.n_layer
     }, &gpt2_model);
     println!("GPT-2: {}", result);
 }

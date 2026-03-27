@@ -20,7 +20,7 @@ pub fn llama_tests(gpus: &Vec<Gpu>) {
     let prompt = "<|system|>\nYou are a helpful assistant.</s>\n<|user|>\nWhat is the capital of France?</s>\n<|assistant|>\n";
     let max_tokens = 200;
     let result = generate(GenerateArgs {
-        prompt, tokenizer: &llama_tokenizer, max_tokens, gpus: &gpus, eos_token_id: llama_model.config.eos_token_id, num_layers: llama_model.config.num_hidden_layers
+        prompt, tokenizer: &llama_tokenizer, max_tokens, gpus: &gpus, eos_token_id: &llama_model.config.eos_token_id, num_layers: llama_model.config.num_hidden_layers
     }, &llama_model);
     println!("LLama: {}", result);
 }

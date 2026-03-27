@@ -1,6 +1,8 @@
+use crate::tokenizer::deserialize_eos_token_id;
 use std::fs;
-use serde::Deserialize;
-use serde_json::from_str;
+use serde::{Deserialize, Deserializer};
+use serde_json::{from_str};
+
 
 #[derive(Deserialize)]
 pub struct LlamaConfig {
@@ -18,7 +20,8 @@ pub struct LlamaConfig {
     pub kv_dim: usize,
     #[serde(default)]
     pub heads_to_kvheads: usize,
-    pub eos_token_id: u32,
+    #[serde(deserialize_with = "deserialize_eos_token_id")]
+    pub eos_token_id: Vec<u32>,
     #[serde(default)]
     pub attn_dim: usize,
     #[serde(default)]

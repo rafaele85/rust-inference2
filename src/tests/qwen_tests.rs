@@ -24,7 +24,7 @@ pub fn qwen_tests(gpus: &Vec<Gpu>) {
         tokenizer: &qwen_tokenizer,
         max_tokens: 50,
         gpus: &gpus,
-        eos_token_id: qwen_model.config.eos_token_id,
+        eos_token_id: &qwen_model.config.eos_token_id,
         num_layers: qwen_model.config.num_hidden_layers,
     }, &qwen_model);
 
@@ -52,7 +52,7 @@ pub fn qwen3_tests(gpus: &Vec<Gpu>) {
         tokenizer: &qwen3_tokenizer,
         max_tokens: 50,
         gpus: &gpus,
-        eos_token_id: qwen3_model.config.eos_token_id,
+        eos_token_id: &qwen3_model.config.eos_token_id,
         num_layers: qwen3_model.config.num_hidden_layers,
     }, &qwen3_model);
 
@@ -88,7 +88,7 @@ pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
         tokenizer: &qwen3_moe_tokenizer,
         max_tokens: 50,
         gpus: &gpus,
-        eos_token_id: qwen3_moe_model.config.eos_token_id,
+        eos_token_id: &qwen3_moe_model.config.eos_token_id,
         num_layers: qwen3_moe_model.config.num_hidden_layers,
     }, &qwen3_moe_model);
 
