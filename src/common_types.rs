@@ -9,6 +9,9 @@ pub type Vecf16 = Vec<f16>;
 
 pub type Arrf16 = [f16];
 
+pub type Arri32 = [i32];
+pub type Veci32 = Vec<i32>;
+
 
 pub type Weight = CudaArrf32;
 pub type WeightF16 = CudaArrf16;

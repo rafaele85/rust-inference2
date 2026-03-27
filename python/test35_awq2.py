@@ -15,3 +15,7 @@ with torch.no_grad():
 print(f"Shape: {y.shape}")
 print(f"First row, first 10: {y[0, :10].tolist()}")
 print(f"Last row, first 10: {y[-1, :10].tolist()}")
+
+print(f"y[0, :10]: {y[0, :10].tolist()}")
+print(f"y[:10, 0]: {y[:10, 0].tolist()}")
+

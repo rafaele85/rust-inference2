@@ -1,4 +1,5 @@
 use crate::arch::llama::llama::LlamaModel;
+use crate::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs};
 use crate::arch::safetensors::{load_tensor_f16, load_tensor_i32, resolve_hf_path, SafeTensor};
 use crate::generate::{generate, GenerateArgs};
 use crate::gpu::Gpu;
@@ -100,19 +101,37 @@ pub fn qwen_awq_tests() {
     let mut st = SafeTensor::new(&qwen_awq_path);
 
     let qw = load_tensor_i32(&mut st, "model.layers.0.self_attn.q_proj.qweight");
+    let qz = load_tensor_i32(&mut st, "model.layers.0.self_attn.q_proj.qzeros");
+    let sc = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.scales");
+
+    let w = awq_dequantize(AwqDequantizeArgs {qweight: &qw, qzero: &qz, scales: &sc, in_dim: 896, out_dim: 896, group_size: 128});
 
     println!("qweight first 10:");
-
     for v in &qw[..10] {
         println!(" {}", v)
     }
 
-    let sc = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.scales");
-
     println!("scales first 10:");
-
     for v in &sc[..10] {
         println!(" {}", v)
     }
+
+    println!("Row 895, first 10:");
+    for i in 0..10 {
+        println!(" {}", w[895*896 + i])
+    }
+
+    print!("col 0, rows 0..10:");
+    for row in 0..10 { print!(" {}", w[row * 896 + 0]); }
+    println!();
+
+    // y[:10, 0] = W[0, 0..10] = row 0, first 10 cols
+    print!("row 0, cols 0..10:");
+    for col in 0..10 { print!(" {}", w[0 * 896 + col]); }
+    println!();
+
+    print!("in=0, out=0..10:");
+    for out_idx in 0..10 { print!(" {}", w[out_idx * 896 + 0]); }
+    println!();
 
 }
