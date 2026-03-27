@@ -1,5 +1,4 @@
-use crate::arch::llama::llama::load_tensor_bf16;
-use crate::arch::safetensors::SafeTensor;
+use crate::arch::safetensors::{load_tensor_bf16, SafeTensor};
 use crate::common_types::Vecf32;
 
 pub fn llama_load_bias(safe_tensor : &mut SafeTensor, name: &str, layer: usize) -> Option<Vecf32> {

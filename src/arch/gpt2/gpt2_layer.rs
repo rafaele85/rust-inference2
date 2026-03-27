@@ -1,28 +1,13 @@
 use crate::arch::common::LoadLayer;
-use crate::arch::safetensors::SafeTensor;
-use crate::common_types::{Vecf32, Weight};
+use crate::arch::safetensors::{load_tensor_f32, SafeTensor};
+use crate::common_types::{Weight};
 use crate::gpu::Gpu;
 
-pub fn load_tensor(model: &mut SafeTensor, name: &str) -> Vecf32 {
-    if !model.entries.contains_key(name) {
-        panic!("NOT FOUND KEY {}", name);
-    }
-    let entry = &model.entries[name];
-    let shard_idx = entry.shard_idx;
-    let start = model.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
-    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
-
-    let bytes = &model.mmaps[shard_idx][start..start+byte_len];
-
-    let result = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
-
-    result
-}
 
 fn load_weight_bias(safe_tensors : &mut SafeTensor, name: &str, layer: usize) -> (Vec<f32>, Vec<f32>) {
     let prefix = format!("h.{}", layer);
-    let w = load_tensor(safe_tensors,  &format!("{}.{}.weight", prefix, name));
-    let b = load_tensor(safe_tensors,&format!("{}.{}.bias", prefix, name));
+    let w = load_tensor_f32(safe_tensors,  &format!("{}.{}.weight", prefix, name));
+    let b = load_tensor_f32(safe_tensors,&format!("{}.{}.bias", prefix, name));
 
     (w, b)
 }

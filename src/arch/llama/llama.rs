@@ -4,35 +4,8 @@ use crate::arch::common::{load_all_layers};
 use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::llama::llama_layer::LlamaLayer;
 use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
-use crate::arch::safetensors::SafeTensor;
+use crate::arch::safetensors::{load_tensor_bf16, SafeTensor};
 use crate::generate::{GenerateNextTokenArgs, Model};
-
-
-pub fn load_tensor_bf16_raw<'a>(safe_tensor: &'a mut SafeTensor, name: &str) -> &'a [u8] {
-    if !safe_tensor.entries.contains_key(name) {
-        panic!("NOT FOUND KEY {}", name);
-    }
-
-    let entry = &safe_tensor.entries[name];
-    let shard_idx = entry.shard_idx;
-    let start = safe_tensor.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
-    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
-
-    let bytes = &safe_tensor.mmaps[shard_idx][start..start+byte_len];
-
-    bytes
-}
-
-pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
-    let bytes = load_tensor_bf16_raw(safe_tensor, name);
-
-    let result = bytes.chunks_exact(2).map(|c| {
-        let bits = u16::from_le_bytes(c.try_into().unwrap());
-        f32::from_bits((bits as u32) << 16)
-    }).collect();
-
-    result
-}
 
 
 
