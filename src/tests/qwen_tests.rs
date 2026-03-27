@@ -1,5 +1,5 @@
 use crate::arch::llama::llama::LlamaModel;
-use crate::arch::safetensors::{resolve_hf_path, SafeTensor};
+use crate::arch::safetensors::{load_tensor_f16, load_tensor_i32, resolve_hf_path, SafeTensor};
 use crate::generate::{generate, GenerateArgs};
 use crate::gpu::Gpu;
 use crate::tokenizer::BpeTokenizer;
@@ -93,4 +93,26 @@ pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
     }, &qwen3_moe_model);
 
     println!("Qwen3-MoE: {}", result);
+}
+
+pub fn qwen_awq_tests() {
+    let qwen_awq_path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
+    let mut st = SafeTensor::new(&qwen_awq_path);
+
+    let qw = load_tensor_i32(&mut st, "model.layers.0.self_attn.q_proj.qweight");
+
+    println!("qweight first 10:");
+
+    for v in &qw[..10] {
+        println!(" {}", v)
+    }
+
+    let sc = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.scales");
+
+    println!("scales first 10:");
+
+    for v in &sc[..10] {
+        println!(" {}", v)
+    }
+
 }

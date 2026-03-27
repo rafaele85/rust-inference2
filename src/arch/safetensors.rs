@@ -3,9 +3,10 @@ use std::env;
 use std::fs::{read_to_string, File};
 use std::io::{Read};
 use std::path::Path;
+use half::f16;
 use memmap2::Mmap;
 use serde_json::{Map, Value};
-use crate::common_types::Vecf32;
+use crate::common_types::{Vecf32};
 
 pub struct TensorEntry {
     pub offsets: [u64; 2],
@@ -118,24 +119,8 @@ pub fn resolve_hf_path(model_name: &str) -> String {
 }
 
 
-pub fn load_tensor_f32(model: &mut SafeTensor, name: &str) -> Vecf32 {
-    if !model.entries.contains_key(name) {
-        panic!("NOT FOUND KEY {}", name);
-    }
-    let entry = &model.entries[name];
-    let shard_idx = entry.shard_idx;
-    let start = model.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
-    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
 
-    let bytes = &model.mmaps[shard_idx][start..start+byte_len];
-
-    let result = bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
-
-    result
-}
-
-
-pub fn load_tensor_bf16_raw<'a>(safe_tensor: &'a mut SafeTensor, name: &str) -> &'a [u8] {
+pub fn load_tensor_raw<'a>(safe_tensor: &'a mut SafeTensor, name: &str) -> &'a [u8] {
     if !safe_tensor.entries.contains_key(name) {
         panic!("NOT FOUND KEY {}", name);
     }
@@ -150,8 +135,20 @@ pub fn load_tensor_bf16_raw<'a>(safe_tensor: &'a mut SafeTensor, name: &str) -> 
     bytes
 }
 
+
+pub fn load_tensor_f32(model: &mut SafeTensor, name: &str) -> Vecf32 {
+    let bytes = load_tensor_raw(model, name);
+
+    let result = bytes.chunks_exact(4).map(|c|
+        f32::from_le_bytes(c.try_into().unwrap())
+    ).collect();
+
+    result
+}
+
+
 pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
-    let bytes = load_tensor_bf16_raw(safe_tensor, name);
+    let bytes = load_tensor_raw(safe_tensor, name);
 
     let result = bytes.chunks_exact(2).map(|c| {
         let bits = u16::from_le_bytes(c.try_into().unwrap());
@@ -161,3 +158,23 @@ pub fn load_tensor_bf16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     result
 }
 
+pub fn load_tensor_i32(safe_tensor: &mut SafeTensor, name: &str) -> Vec<i32> {
+    let bytes = load_tensor_raw(safe_tensor, name);
+    let result = bytes.chunks_exact(4).map(|c|
+      i32::from_le_bytes(c.try_into().unwrap())
+    ).collect();
+
+    result
+}
+
+
+pub fn load_tensor_f16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+    let bytes = load_tensor_raw(safe_tensor, name);
+
+    let result = bytes.chunks_exact(2).map(|c| {
+        let bits = u16::from_le_bytes(c.try_into().unwrap());
+        f16::from_bits(bits).to_f32()
+    }).collect();
+
+    result
+}
