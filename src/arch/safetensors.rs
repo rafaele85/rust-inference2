@@ -6,11 +6,14 @@ use std::path::Path;
 use half::f16;
 use memmap2::Mmap;
 use serde_json::{Map, Value};
+use crate::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs, AWQ_PACK_SIZE};
 use crate::common_types::{Vecf32};
 
 pub struct TensorEntry {
     pub offsets: [u64; 2],
     pub shard_idx: usize,
+    pub shape: Vec<usize>,
+    pub dtype: String,
 }
 pub struct SafeTensor {
     pub mmaps: Vec<Mmap>,
@@ -38,9 +41,13 @@ impl SafeTensor {
                 continue;
             }
             let offsets: Vec<u64> = serde_json::from_value(value["data_offsets"].clone()).unwrap();
+            let shape: Vec<usize> = serde_json::from_value(value["shape"].clone()).unwrap();
+            let dtype: String = value["dtype"].as_str().unwrap().to_string();
             let tensor_entry = TensorEntry {
                 offsets: [offsets[0], offsets[1]],
-                shard_idx
+                shard_idx,
+                shape,
+                dtype
             };
             entries.insert(name.clone(), tensor_entry);
         }
@@ -177,4 +184,38 @@ pub fn load_tensor_f16(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     }).collect();
 
     result
+}
+
+pub fn load_tensor_awq(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+    let qw_key = format!("{}.qweight", name);
+    let qw = load_tensor_i32(safe_tensor, &qw_key);
+
+    let qz_key = format!("{}.qzeros", name);
+    let qz = load_tensor_i32(safe_tensor, &qz_key);
+
+    let sc_key = format!("{}.scales", name);
+    let sc = load_tensor_f16(safe_tensor, &sc_key);
+
+    let qw_shape = &safe_tensor.entries[&qw_key].shape;
+    let in_dim = qw_shape[0];
+    let out_dim = qw_shape[1] * AWQ_PACK_SIZE;
+
+    let sc_shape = &safe_tensor.entries[&sc_key].shape;
+    let num_group = sc_shape[0];
+    let group_size = in_dim / num_group;
+
+    let w = awq_dequantize(AwqDequantizeArgs {
+        qweight: &qw, qzero: &qz, scales: &sc, in_dim, out_dim, group_size
+    });
+    w
+}
+
+pub fn load_tensor_to_f32(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
+    let dtype = safe_tensor.entries[name].dtype.clone();
+    match dtype.as_str() {
+        "BF16" => load_tensor_bf16(safe_tensor, name),
+        "F16" => load_tensor_f16(safe_tensor, name),
+        "F32" => load_tensor_f32(safe_tensor, name),
+        _ => panic!("Unknown type {} in tensor {} ", dtype, name)
+    }
 }

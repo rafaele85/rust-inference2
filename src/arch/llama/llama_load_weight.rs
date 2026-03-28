@@ -1,11 +1,11 @@
-use crate::arch::safetensors::{load_tensor_bf16, SafeTensor};
+use crate::arch::safetensors::{load_tensor_awq, load_tensor_to_f32, SafeTensor};
 use crate::common_types::Vecf32;
 
 pub fn llama_load_bias(safe_tensor : &mut SafeTensor, name: &str, layer: usize) -> Option<Vecf32> {
     let entries = &safe_tensor.entries;
     let key = format!("model.layers.{}.{}.bias", layer, name);
     if entries.contains_key(&key) {
-        let b = load_tensor_bf16(safe_tensor, &key);
+        let b = load_tensor_to_f32(safe_tensor, &key);
         return Some(b);
     }
     None
@@ -15,20 +15,29 @@ pub fn llama_load_weight_optional(safe_tensor : &mut SafeTensor, name: &str, lay
     let entries = &safe_tensor.entries;
     let key = format!("model.layers.{}.{}.weight", layer, name);
     if entries.contains_key(&key) {
-        let b = load_tensor_bf16(safe_tensor, &key);
+        let b = load_tensor_to_f32(safe_tensor, &key);
         return Some(b);
     }
     None
 }
 
-pub fn llama_load_weight(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
+pub fn llama_load_weight_f16(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
     let prefix = format!("model.layers.{}", layer);
-    let w = load_tensor_bf16(safe_tensor, &format!("{}.{}.weight", prefix, name));
+    let w = load_tensor_to_f32(safe_tensor, &format!("{}.{}.weight", prefix, name));
     w
 }
 
-pub fn llama_load_weight_f16(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
+
+pub fn llama_load_weight(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
     let prefix = format!("model.layers.{}", layer);
-    let w = load_tensor_bf16(safe_tensor, &format!("{}.{}.weight", prefix, name));
-    w
+    let bf16_key = format!("{}.{}.weight", prefix, name);
+    let awq_key = format!("{}.{}.qweight", prefix, name);
+
+    if safe_tensor.entries.contains_key(&bf16_key) {
+        load_tensor_to_f32(safe_tensor, &bf16_key)
+    } else if safe_tensor.entries.contains_key(&awq_key) {
+        load_tensor_awq(safe_tensor, &format!("{}.{}", prefix, name))
+    } else {
+        panic!("Not found weight or qweight for {}.{}", prefix, name)
+    }
 }

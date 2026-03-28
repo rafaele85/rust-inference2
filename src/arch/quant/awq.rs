@@ -1,7 +1,8 @@
 use crate::common_types::{Arrf32, Arri32, Vecf32};
 
+pub const AWQ_PACK_SIZE: usize = 32 / AWQ_BITS as usize; // 8
+
 const AWQ_BITS: u32 = 4;
-const AWQ_PACK_SIZE: usize = 32 / AWQ_BITS as usize; // 8
 const AWQ_MASK: u32 = (1 << AWQ_BITS) - 1;           // 0xF
 const AWQ_ORDER: [u32; AWQ_PACK_SIZE] = [0, 4, 1, 5, 2, 6, 3, 7];
 
@@ -29,7 +30,6 @@ pub fn awq_dequantize(args: AwqDequantizeArgs) -> Vecf32 {
             let col_offset = packed_col * AWQ_PACK_SIZE;
             let scale_offset = group * out_dim + col_offset;
             let out_offset = col_offset * in_dim + in_idx;
-            let out_offset = col_offset + in_idx * out_dim;
             dequantlize_col(DequantizeColArgs {output: &mut output, packed_val, z_packed, scales, out_offset, in_dim, scale_offset});
         }
     }

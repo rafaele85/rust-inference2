@@ -135,3 +135,64 @@ pub fn qwen_awq_tests() {
     println!();
 
 }
+
+
+
+pub fn awq_matmul_test(gpus: &Vec<Gpu>) {
+    let path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
+    let mut st = SafeTensor::new(&path);
+    let gpu = &gpus[0];
+
+    // Load embedding for token 785
+    let embed_all = load_tensor_f16(&mut st, "model.embed_tokens.weight");
+    let embed = &embed_all[785 * 896..(785 + 1) * 896];
+    print!("embed[:10]:");
+    for i in 0..10 { print!(" {}", embed[i]); }
+    println!();
+
+    // Load and dequantize q_proj
+    let qw = load_tensor_i32(&mut st, "model.layers.0.self_attn.q_proj.qweight");
+    let qz = load_tensor_i32(&mut st, "model.layers.0.self_attn.q_proj.qzeros");
+    let sc = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.scales");
+    let w = awq_dequantize(AwqDequantizeArgs {
+        qweight: &qw, qzero: &qz, scales: &sc,
+        in_dim: 896, out_dim: 896, group_size: 128,
+    });
+
+    // Upload and matmul
+    let w_gpu = gpu.upload_f16_from_f32(&w, "q_proj_w");
+    let result = gpu.matmul_transposed_f16(embed, &w_gpu, 896, 896);
+
+    // Add bias
+    let bias = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.bias");
+    let result: Vec<f32> = result.iter().zip(bias.iter()).map(|(r, b)| r + b).collect();
+
+    print!("q_proj output[:10]:");
+    for i in 0..10 { print!(" {}", result[i]); }
+    println!();
+}
+
+
+pub fn qwen_awq_e2e_test(gpus: &Vec<Gpu>) {
+    let path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
+    let tokenizer = BpeTokenizer::load(
+        &path,
+        "\u{0120}".to_string(),
+        "\u{010A}".to_string(),
+        false,
+    );
+    let mut st = SafeTensor::new(&path);
+    let model = LlamaModel::new(&mut st, &gpus);
+
+    let prompt = "The capital of France is";
+    let result = generate(GenerateArgs {
+        prompt,
+        tokenizer: &tokenizer,
+        max_tokens: 20,
+        gpus,
+        eos_token_id: &model.config.eos_token_id,
+        num_layers: model.config.num_hidden_layers,
+    }, &model);
+
+    println!("AWQ Qwen: {}", result);
+}

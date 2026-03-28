@@ -4,7 +4,7 @@ use crate::arch::common::{load_all_layers};
 use crate::arch::llama::llama_config::LlamaConfig;
 use crate::arch::llama::llama_layer::LlamaLayer;
 use crate::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
-use crate::arch::safetensors::{load_tensor_bf16, SafeTensor};
+use crate::arch::safetensors::{ load_tensor_to_f32, SafeTensor};
 use crate::generate::{GenerateNextTokenArgs, Model};
 
 
@@ -21,14 +21,14 @@ impl LlamaModel {
     pub fn new(safe_tensor: &mut SafeTensor, gpus: &Vec<Gpu>) -> Self {
         let config = LlamaConfig::load(&format!("{}/config.json", safe_tensor.path_to_model_dir));
         let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpus);
-        let embed_weights = load_tensor_bf16(safe_tensor, "model.embed_tokens.weight");
-        let final_norm_w = load_tensor_bf16(safe_tensor,"model.norm.weight");
+        let embed_weights = load_tensor_to_f32(safe_tensor, "model.embed_tokens.weight");
+        let final_norm_w = load_tensor_to_f32(safe_tensor,"model.norm.weight");
         let default_gpu = get_default_gpu(gpus, "lm_head_w");
 
         let lm_head_exists = safe_tensor.entries.contains_key("lm_head.weight");
 
         let lm_head_w  = if lm_head_exists {
-            let raw = &load_tensor_bf16(safe_tensor, "lm_head.weight");
+            let raw = &load_tensor_to_f32(safe_tensor, "lm_head.weight");
             default_gpu.upload_f16_from_f32(raw, "lm_head_w" )
         } else {
             default_gpu.upload_f16_from_f32(&embed_weights, "lm_head_w" )
