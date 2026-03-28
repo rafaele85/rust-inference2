@@ -7,32 +7,31 @@ use crate::arch::gpt2::gpt2_linear::{normalize_and_project, project_and_residual
 use crate::arch::gpt2::gpt2_logits::{gpt2_compute_logits, GPT2ComputeLogitsArgs};
 use crate::arch::gpt2::gpt2::{GPT2Model};
 use crate::arch::gpt2::gpt2_activation::gelu;
+use crate::arch::gpt2::gpt2_config::GPT2Config;
 use crate::arch::gpt2::gpt2_layer::GPT2Layer;
 
 pub struct GenerateTokenSingleLayerArgs<'a> {
     pub layer_no: usize,
     pub qkv_size: usize,
-    pub n_heads: usize,
-    pub dim: usize,
     pub hidden: &'a mut Vecf32,
     pub layer: &'a GPT2Layer,
     pub kv_cache: &'a mut KVCache,
-    pub head_dim: usize,
-    pub ffn_dim: usize,
     pub gpu: &'a mut Gpu,
-    pub eps: f32
+    pub config: &'a GPT2Config,
 }
 
-fn generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
+fn gpt2_generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
     let GenerateTokenSingleLayerArgs {
         hidden, layer, layer_no, qkv_size,
-        kv_cache, n_heads, dim, head_dim, ffn_dim, gpu, eps
+        kv_cache, gpu, config
     } = args;
+
+    let GPT2Config {n_head, ffn_dim, n_embd, head_dim, layer_norm_epsilon, ..} = *config;
 
     let qkv = normalize_and_project(NormalizeAndProject {
         hidden, norm_weights: &layer.ln1_w, norm_bias: &layer.ln1_b,
         projection_weights: &layer.qkv_w, projection_bias: &layer.qkv_b, projection_dim: qkv_size, gpu,
-        eps
+        eps: layer_norm_epsilon
     });
 
     let GPT2QKV {q, k, v} = gpt2_extract_qkv(&qkv);
@@ -47,23 +46,23 @@ fn generate_token_single_layer(args: GenerateTokenSingleLayerArgs) {
         k_cache,
         v_cache,
         cache_len,
-        n_heads,
-        dim,
-        head_dim,
+        n_heads: n_head,
+        dim: n_embd,
+        head_dim: head_dim,
     });
 
     project_and_residual(ProjectAndResidualArgs {
-        activation_weights: &attn_raw, projection_weights: &layer.proj_w, projection_bias: &layer.proj_b, dim, hidden, gpu
+        activation_weights: &attn_raw, projection_weights: &layer.proj_w, projection_bias: &layer.proj_b, dim: n_embd, hidden, gpu
     });
 
     let ffn_up = normalize_and_project(NormalizeAndProject {
-       hidden, norm_weights: &layer.ln2_w, norm_bias: &layer.ln2_b, projection_weights: &layer.ffn_up_w, projection_bias: &layer.ffn_up_b, projection_dim: ffn_dim, gpu, eps
+       hidden, norm_weights: &layer.ln2_w, norm_bias: &layer.ln2_b, projection_weights: &layer.ffn_up_w, projection_bias: &layer.ffn_up_b, projection_dim: ffn_dim, gpu, eps: layer_norm_epsilon
     });
 
     let ffn_act = gelu(&ffn_up);
 
     project_and_residual(ProjectAndResidualArgs {
-        activation_weights: &ffn_act, projection_weights: &layer.ffn_down_w, projection_bias: &layer.ffn_down_b, dim, hidden, gpu
+        activation_weights: &ffn_act, projection_weights: &layer.ffn_down_w, projection_bias: &layer.ffn_down_b, dim: n_embd, hidden, gpu
     });
 }
 
@@ -93,11 +92,11 @@ pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {
     for layer_no in 0..config.n_layer {
         let layer = &model.layers[layer_no];
         let gpu = get_gpu(gpus, layer_no, config.n_layer);
-        generate_token_single_layer(GenerateTokenSingleLayerArgs {
+        gpt2_generate_token_single_layer(GenerateTokenSingleLayerArgs {
             layer_no, layer, qkv_size, hidden: &mut hidden,
             kv_cache,
-            n_heads: config.n_head, ffn_dim: config.ffn_dim, dim: config.n_embd, head_dim: config.head_dim,
-            gpu, eps: config.layer_norm_epsilon
+            gpu,
+            config
         });
     }
     let default_gpu = get_default_gpu(gpus, "logits");
