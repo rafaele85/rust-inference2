@@ -50,12 +50,10 @@ fn dequantlize_col(args: DequantizeColArgs) {
 
     for k in 0..AWQ_PACK_SIZE {
         let shift = AWQ_ORDER[k] * AWQ_BITS;
-
         let w_int4 = ((packed_val >> shift) & AWQ_MASK) as f32;
         let z_int4 = ((z_packed >> shift) & AWQ_MASK) as f32;
         let scale = scales[scale_offset + k];
         let out = (w_int4 - z_int4) * scale;
-
-        output[out_offset + k] = out;
+        output[out_offset + k * in_dim] = out;
     }
 }

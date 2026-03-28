@@ -32,6 +32,8 @@ pub struct LlamaLayer {
 fn load_dense_ffns(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
     let has_dense_ffns = safe_tensor.entries.contains_key(
         &format!("model.layers.{}.mlp.gate_proj.weight", layer_no)
+    ) || safe_tensor.entries.contains_key(
+        &format!("model.layers.{}.mlp.gate_proj.qweight", layer_no)
     );
     if has_dense_ffns  {
         let gate_proj_w = gpu.upload_f16_from_f32( &llama_load_weight(safe_tensor, "mlp.gate_proj", layer_no), "gate_proj_w" );
