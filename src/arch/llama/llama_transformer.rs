@@ -13,7 +13,7 @@ use crate::arch::llama::llama_linear::hadamard;
 use crate::arch::llama::llama_logits::llama_logits;
 use crate::arch::llama::llama_norm::rms_norm;
 
-fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &LlamaConfig, gpu: &Gpu) {
+fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &LlamaConfig, gpu: &mut Gpu) {
     let normed2 = rms_norm(&hidden, &layer.post_norm_w, config.rms_norm_eps);
 
     let gate = matmul_transposed_f16(&normed2, &gate_proj_w, config.intermediate_size, gpu);
@@ -36,23 +36,23 @@ pub struct LlamaLayerArgs<'a> {
     pub kv_cache: &'a mut KVCache,
     pub layer_no: usize,
     pub position: usize,
-    pub gpu: &'a Gpu,
+    pub gpu: &'a mut Gpu,
 }
 
 
 pub fn llama_layer(args: LlamaLayerArgs) {
-    let LlamaLayerArgs { layer, config, kv_cache, layer_no, position, gpu, hidden} = args;
+    let LlamaLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden} = args;
 
     let mut normed = rms_norm(hidden, &layer.input_norm_w, config.rms_norm_eps);
 
-    llama_gqa(LlamaGQAArgs {config, gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
+    llama_gqa(LlamaGQAArgs {config, gpu: &mut gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
 
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
         llama_moe_ffn(LlamaMoeFFN {hidden, normed: &normed2, router_w: &router_w, experts: &experts, config, gpu, layer_no});
     } else {
         if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
-            llama_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, &gpu);
+            llama_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, gpu);
         }
     }
 }
@@ -62,11 +62,11 @@ pub struct LlamaGenerateTokenArgs<'a> {
     pub position: usize,
     pub model: &'a LlamaModel,
     pub kv_cache: &'a mut KVCache,
-    pub gpus: &'a Vec<Gpu>,
+    pub gpus: &'a mut Vec<Gpu>,
 }
 
 pub fn llama_generate_token(args: LlamaGenerateTokenArgs) -> usize {
-    let LlamaGenerateTokenArgs {token_id, position, model, kv_cache, gpus} = args;
+    let LlamaGenerateTokenArgs {token_id, position, model, kv_cache, mut gpus} = args;
     let LlamaModel {config, embed_weights, layers, final_norm_w, lm_head_w, ..} = model;
     let token_start = token_id * config.hidden_size;
     let embed_token = &embed_weights[token_start..token_start + config.hidden_size];
@@ -86,7 +86,7 @@ pub fn llama_generate_token(args: LlamaGenerateTokenArgs) -> usize {
         });
     }
 
-    let default_gpu = get_default_gpu(gpus, "logits");
+    let default_gpu = get_default_gpu(&mut gpus, "logits");
     let output_token_id = llama_logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
 
     output_token_id

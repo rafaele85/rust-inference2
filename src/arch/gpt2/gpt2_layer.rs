@@ -28,7 +28,7 @@ pub struct GPT2Layer {
 }
 
 impl LoadLayer for GPT2Layer {
-    fn load_layer(safe_tensor: &mut SafeTensor, layer: usize, gpu: &Gpu) -> Self {
+    fn load_layer(safe_tensor: &mut SafeTensor, layer: usize, gpu: &mut Gpu) -> Self {
         let (ln1_w, ln1_b) = load_weight_bias(safe_tensor, "ln_1", layer);
         let (qkv_w, qkv_b) = load_weight_bias(safe_tensor, "attn.c_attn", layer);
         let (proj_w, proj_b) = load_weight_bias(safe_tensor, "attn.c_proj", layer);

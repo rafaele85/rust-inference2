@@ -18,9 +18,9 @@ pub struct LlamaModel {
 }
 
 impl LlamaModel {
-    pub fn new(safe_tensor: &mut SafeTensor, gpus: &Vec<Gpu>) -> Self {
+    pub fn new(safe_tensor: &mut SafeTensor, gpus: &mut Vec<Gpu>) -> Self {
         let config = LlamaConfig::load(&format!("{}/config.json", safe_tensor.path_to_model_dir));
-        let layers = load_all_layers(safe_tensor, config.num_hidden_layers, &gpus);
+        let layers = load_all_layers(safe_tensor, config.num_hidden_layers, gpus);
         let embed_weights = load_tensor_to_f32(safe_tensor, "model.embed_tokens.weight");
         let final_norm_w = load_tensor_to_f32(safe_tensor,"model.norm.weight");
         let default_gpu = get_default_gpu(gpus, "lm_head_w");

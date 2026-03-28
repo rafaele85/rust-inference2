@@ -10,7 +10,7 @@ pub struct GPT2ComputeLogitsArgs<'a> {
     pub last_pos: usize,
     pub dim: usize,
     pub vocab_size: usize,
-    pub gpu : &'a Gpu,
+    pub gpu : &'a mut Gpu,
     pub gpt2_model: &'a GPT2Model
 }
 

@@ -5,7 +5,7 @@ use crate::generate::{generate, GenerateArgs};
 use crate::gpu::Gpu;
 use crate::tokenizer::BpeTokenizer;
 
-pub fn qwen_tests(gpus: &Vec<Gpu>) {
+pub fn qwen_tests(gpus: &mut Vec<Gpu>) {
     let qwen_path = resolve_hf_path("Qwen/Qwen2.5-14B-Instruct");
 
     let qwen_tokenizer = BpeTokenizer::load(
@@ -16,7 +16,7 @@ pub fn qwen_tests(gpus: &Vec<Gpu>) {
     );
 
     let mut safe_tensor_qwen = SafeTensor::new(&qwen_path);
-    let qwen_model = LlamaModel::new(&mut safe_tensor_qwen, &gpus);
+    let qwen_model = LlamaModel::new(&mut safe_tensor_qwen, gpus);
 
     let prompt = "The capital of France is";
 
@@ -24,7 +24,7 @@ pub fn qwen_tests(gpus: &Vec<Gpu>) {
         prompt,
         tokenizer: &qwen_tokenizer,
         max_tokens: 50,
-        gpus: &gpus,
+        gpus,
         eos_token_id: &qwen_model.config.eos_token_id,
         num_layers: qwen_model.config.num_hidden_layers,
     }, &qwen_model);
@@ -33,7 +33,7 @@ pub fn qwen_tests(gpus: &Vec<Gpu>) {
 }
 
 
-pub fn qwen3_tests(gpus: &Vec<Gpu>) {
+pub fn qwen3_tests(gpus: &mut Vec<Gpu>) {
     let qwen3_path = resolve_hf_path("Qwen/Qwen3-0.6B");
 
     let qwen3_tokenizer = BpeTokenizer::load(
@@ -44,7 +44,7 @@ pub fn qwen3_tests(gpus: &Vec<Gpu>) {
     );
 
     let mut qwen3_safe_tensor = SafeTensor::new(&qwen3_path);
-    let qwen3_model = LlamaModel::new(&mut qwen3_safe_tensor, &gpus);
+    let qwen3_model = LlamaModel::new(&mut qwen3_safe_tensor, gpus);
 
     let prompt = "The capital of France is";
 
@@ -52,7 +52,7 @@ pub fn qwen3_tests(gpus: &Vec<Gpu>) {
         prompt,
         tokenizer: &qwen3_tokenizer,
         max_tokens: 50,
-        gpus: &gpus,
+        gpus,
         eos_token_id: &qwen3_model.config.eos_token_id,
         num_layers: qwen3_model.config.num_hidden_layers,
     }, &qwen3_model);
@@ -61,7 +61,7 @@ pub fn qwen3_tests(gpus: &Vec<Gpu>) {
 }
 
 
-pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
+pub fn qwen3_moe_tests(gpus: &mut Vec<Gpu>) {
     let qwen3_moe_path = resolve_hf_path("Qwen/Qwen3-30B-A3B-Instruct-2507");
 
     let qwen3_moe_tokenizer = BpeTokenizer::load(
@@ -73,12 +73,7 @@ pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
 
     let mut qwen3_moe_safe_tensor = SafeTensor::new(&qwen3_moe_path);
 
-    let qwen3_moe_model = LlamaModel::new(&mut qwen3_moe_safe_tensor, &gpus);
-
-    for (i, gpu) in gpus.iter().enumerate() {
-        let (free, total) = gpu.mem_info();
-        let used = total - free;
-    }
+    let qwen3_moe_model = LlamaModel::new(&mut qwen3_moe_safe_tensor, gpus);
 
     let prompt = "The capital of France is";
     //let prompt = "<|im_start|>user\nExplain the difference between a compiler and an interpreter in simple terms.<|im_end|>\n<|im_start|>assistant\n";
@@ -88,7 +83,7 @@ pub fn qwen3_moe_tests(gpus: &Vec<Gpu>) {
         prompt,
         tokenizer: &qwen3_moe_tokenizer,
         max_tokens: 50,
-        gpus: &gpus,
+        gpus,
         eos_token_id: &qwen3_moe_model.config.eos_token_id,
         num_layers: qwen3_moe_model.config.num_hidden_layers,
     }, &qwen3_moe_model);
@@ -138,10 +133,10 @@ pub fn qwen_awq_tests() {
 
 
 
-pub fn awq_matmul_test(gpus: &Vec<Gpu>) {
+pub fn awq_matmul_test(gpus: &mut Vec<Gpu>) {
     let path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
     let mut st = SafeTensor::new(&path);
-    let gpu = &gpus[0];
+    let gpu = &mut gpus[0];
 
     // Load embedding for token 785
     let embed_all = load_tensor_f16(&mut st, "model.embed_tokens.weight");
@@ -160,8 +155,8 @@ pub fn awq_matmul_test(gpus: &Vec<Gpu>) {
     });
 
     // Upload and matmul
-    let w_gpu = gpu.upload_f16_from_f32(&w, "q_proj_w");
-    let result = gpu.matmul_transposed_f16(embed, &w_gpu, 896, 896);
+    let w_gpu = &mut gpu.upload_f16_from_f32(&w, "q_proj_w");
+    let result = &mut gpu.matmul_transposed_f16(embed, &w_gpu, 896, 896);
 
     // Add bias
     let bias = load_tensor_f16(&mut st, "model.layers.0.self_attn.q_proj.bias");
@@ -173,7 +168,7 @@ pub fn awq_matmul_test(gpus: &Vec<Gpu>) {
 }
 
 
-pub fn qwen_awq_e2e_test(gpus: &Vec<Gpu>) {
+pub fn qwen_awq_e2e_test(gpus: &mut Vec<Gpu>) {
     let path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
     let tokenizer = BpeTokenizer::load(
         &path,
@@ -182,13 +177,13 @@ pub fn qwen_awq_e2e_test(gpus: &Vec<Gpu>) {
         false,
     );
     let mut st = SafeTensor::new(&path);
-    let model = LlamaModel::new(&mut st, &gpus);
+    let model = LlamaModel::new(&mut st, gpus);
 
     let prompt = "The capital of France is";
     let result = generate(GenerateArgs {
         prompt,
         tokenizer: &tokenizer,
-        max_tokens: 20,
+        max_tokens: 50,
         gpus,
         eos_token_id: &model.config.eos_token_id,
         num_layers: model.config.num_hidden_layers,

@@ -29,7 +29,7 @@ pub struct LlamaLayer {
 
 }
 
-fn load_dense_ffns(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
+fn load_dense_ffns(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
     let has_dense_ffns = safe_tensor.entries.contains_key(
         &format!("model.layers.{}.mlp.gate_proj.weight", layer_no)
     ) || safe_tensor.entries.contains_key(
@@ -48,7 +48,7 @@ fn load_dense_ffns(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> 
 
 
 impl LoadLayer for LlamaLayer {
-    fn load_layer(safe_tensor: &mut SafeTensor, layer: usize, gpu: &Gpu) -> Self {
+    fn load_layer(safe_tensor: &mut SafeTensor, layer: usize, gpu: &mut Gpu) -> Self {
         let input_norm_w = llama_load_weight(safe_tensor, "input_layernorm", layer);
         let post_norm_w = llama_load_weight(safe_tensor, "post_attention_layernorm", layer);
 

@@ -16,7 +16,7 @@ pub struct LlamaExpert {
     pub down_proj_w: WeightF16,
 }
 
-fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &Gpu) -> WeightF16 {
+fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &mut Gpu) -> WeightF16 {
     let name = format!("mlp.experts.{}.{}", expert_no, weight_name);
     let full_name = format!("model.layers.{}.{}.weight", layer_no, name);
 
@@ -31,7 +31,7 @@ fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: 
     w_gpu
 }
 
-fn load_expert(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, gpu: &Gpu) -> LlamaExpert {
+fn load_expert(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, gpu: &mut Gpu) -> LlamaExpert {
     let gate_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "gate_proj", gpu);
     let up_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "up_proj", gpu);
     let down_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "down_proj", gpu);
@@ -126,7 +126,7 @@ fn get_top_scores(scores: &Vecf32, num_experts: usize, num_experts_per_tok: usiz
 
 pub fn normalize_weights(weights: &mut Vecf32) {
     let sum = weights.iter().sum::<f32>();
-    for mut w in weights.iter_mut() {
+    for w in weights.iter_mut() {
         *w /= sum;
     }
 }
@@ -137,7 +137,7 @@ struct ApplyExpertArgs<'a> {
     expert: &'a LlamaExpert,
     moe_intermediate_size: usize,
     w: f32,
-    gpu: &'a Gpu,
+    gpu: &'a mut Gpu,
     moe_out: &'a mut Vecf32,
 }
 
@@ -161,7 +161,7 @@ struct ApplyExpertsArgs<'a> {
     top_indices: &'a Vec<usize>,
     experts: &'a Vec<LlamaExpert>,
     moe_intermediate_size: usize,
-    gpu: &'a Gpu,
+    gpu: &'a mut Gpu,
     expert_probs : &'a Vecf32,
 }
 
@@ -184,24 +184,20 @@ pub struct LlamaMoeFFN<'a> {
     pub router_w: &'a Vecf32,
     pub experts: &'a Vec<LlamaExpert>,
     pub config: &'a LlamaConfig,
-    pub gpu: &'a Gpu,
+    pub gpu: &'a mut Gpu,
     pub layer_no: usize,
 }
 
 pub fn llama_moe_ffn(args: LlamaMoeFFN) {
-    let LlamaMoeFFN {mut hidden, normed, router_w, experts, config, gpu, layer_no } = args;
-    let LlamaConfig {num_experts_per_tok, moe_intermediate_size, hidden_size,norm_topk_prob, ..} = config;
+    let LlamaMoeFFN {mut hidden, normed, router_w, experts, config, gpu, .. } = args;
+    let LlamaConfig {num_experts_per_tok, moe_intermediate_size, hidden_size, ..} = config;
     let num_experts = experts.len();
 
     let scores = compute_scores(normed, router_w, *hidden_size, num_experts);
 
     let (top_scores, top_indices) = get_top_scores(&scores, num_experts, *num_experts_per_tok);
 
-    let mut expert_probs  = softmax(&top_scores);
-
-    if *norm_topk_prob {
-        normalize_weights(&mut expert_probs);
-    }
+    let expert_probs  = softmax(&top_scores);
 
     let moe_out = apply_experts(ApplyExpertsArgs {
         top_indices: &top_indices, gpu, hidden_size: *hidden_size, experts, normed, moe_intermediate_size: *moe_intermediate_size, expert_probs : &expert_probs

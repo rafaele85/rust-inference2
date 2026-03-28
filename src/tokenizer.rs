@@ -157,6 +157,5 @@ where D: Deserializer<'de>,
     match EosTokenId::deserialize(deserializer)? {
         EosTokenId::Single(n) => Ok(vec![n]),
         EosTokenId::Multiple(arr) => Ok(arr),
-        _ => Err(D::Error::custom("unexpected eos_token_id format")),
     }
 }

@@ -16,7 +16,7 @@ pub struct ComputeQKVArgs<'a> {
     kv_cache: &'a mut KVCache,
     layer_no: usize,
     position: usize,
-    gpu: &'a Gpu,
+    gpu: &'a mut Gpu,
 }
 
 fn add_optional_bias(vec: &mut Vecf32, optional_bias: &Option<Vecf32>) {
@@ -46,21 +46,21 @@ fn apply_qk_norm(args: ApplyQKNormArgs) {
 }
 
 fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &PositionKVVectors ) {
-    let ComputeQKVArgs {normed, layer, config, kv_cache, layer_no, position, gpu} = args;
+    let ComputeQKVArgs {normed, layer, config, kv_cache, layer_no, position, mut gpu} = args;
     let LlamaLayer {q_proj_w, q_proj_b, k_proj_w, k_proj_b, v_proj_w, v_proj_b, ..} = layer;
     let LlamaConfig {kv_dim, head_dim, rope_theta, attn_dim, num_attention_heads, rms_norm_eps, num_key_value_heads,  ..} = *config;
 
-    let mut q = matmul_transposed_f16(&normed, q_proj_w, attn_dim, gpu);
+    let mut q = matmul_transposed_f16(&normed, q_proj_w, attn_dim, &mut gpu);
     add_optional_bias(&mut q, q_proj_b);
 
-    let mut k = matmul_transposed_f16(&normed, k_proj_w, kv_dim, gpu);
+    let mut k = matmul_transposed_f16(&normed, k_proj_w, kv_dim, &mut gpu);
     add_optional_bias(&mut k, k_proj_b);
 
     apply_qk_norm(ApplyQKNormArgs { vec: &mut q, norm_w: &layer.q_norm_w, num_heads: num_attention_heads, head_dim, eps: rms_norm_eps});
 
     apply_qk_norm(ApplyQKNormArgs { vec: &mut k, norm_w: &layer.k_norm_w, num_heads: num_key_value_heads, head_dim, eps: rms_norm_eps});
 
-    let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, gpu);
+    let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, &mut gpu);
     add_optional_bias(&mut v, v_proj_b);
 
     let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta, head_dim/2);
@@ -78,7 +78,7 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
 pub struct LlamaGQAArgs<'a> {
     pub config: &'a LlamaConfig,
     pub kv_cache: &'a mut KVCache,
-    pub gpu: &'a Gpu,
+    pub gpu: &'a mut Gpu,
     pub layer: &'a LlamaLayer,
     pub hidden: &'a mut Vecf32,
     pub normed: &'a mut Vecf32,

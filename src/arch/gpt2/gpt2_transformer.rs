@@ -19,7 +19,7 @@ pub struct GenerateTokenSingleLayerArgs<'a> {
     pub kv_cache: &'a mut KVCache,
     pub head_dim: usize,
     pub ffn_dim: usize,
-    pub gpu: &'a Gpu,
+    pub gpu: &'a mut Gpu,
     pub eps: f32
 }
 
@@ -71,7 +71,7 @@ pub struct GPT2GenerateTokenArgs<'a> {
     pub token_id: usize,
     pub position: usize,
     pub kv_cache: &'a mut KVCache,
-    pub gpus: &'a Vec<Gpu>,
+    pub gpus: &'a mut Vec<Gpu>,
     pub model: &'a GPT2Model
 }
 pub fn gpt2_generate_token(args: GPT2GenerateTokenArgs) -> usize {

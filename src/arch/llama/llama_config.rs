@@ -28,8 +28,6 @@ pub struct LlamaConfig {
     pub num_experts_per_tok: usize,
     #[serde(default)]
     pub moe_intermediate_size: usize,
-    #[serde(default)]
-    pub norm_topk_prob: bool,
 }
 
 impl LlamaConfig {
