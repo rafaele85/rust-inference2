@@ -111,6 +111,21 @@ impl SafeTensor {
             Self::open_sharded(path_to_model_dir)
         }
     }
+
+    pub fn load_layer_weight(&mut self, name: &str, layer: usize) -> Vecf32 {
+        let prefix = format!("model.layers.{}", layer);
+        let bf16_key = format!("{}.{}.weight", prefix, name);
+        let awq_key = format!("{}.{}.qweight", prefix, name);
+
+        if self.entries.contains_key(&bf16_key) {
+            load_tensor_to_f32(self, &bf16_key)
+        } else if self.entries.contains_key(&awq_key) {
+            load_tensor_awq(self, &format!("{}.{}", prefix, name))
+        } else {
+            panic!("Not found weight or qweight for {}.{}", prefix, name)
+        }
+    }
+
 }
 
 pub fn resolve_hf_path(model_name: &str) -> String {
@@ -219,3 +234,5 @@ pub fn load_tensor_to_f32(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
         _ => panic!("Unknown type {} in tensor {} ", dtype, name)
     }
 }
+
+
