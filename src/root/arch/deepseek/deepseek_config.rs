@@ -9,24 +9,24 @@ pub struct DeepseekConfig {
 
     pub num_attention_heads: usize,
     pub num_key_value_heads: usize,
-    pub rope_theta: f32,
+    pub rope_theta: f32,              //base frequency for RoPE
 
     pub kv_lora_rank: usize,          //KV compression bottleneck
     pub qk_nope_head_dim: usize,      //Q/K dims without ROPE
     pub qk_rope_head_dim: usize,      //Q/K dims with ROPE
     pub v_head_dim: usize,            //value head dim
     #[serde(default)]
-    pub q_lora_rank: Option<usize>,   //
+    pub q_lora_rank: Option<usize>,   //bottleneck size for compressing Q, if > 0 means Q goes through down-project→norm→up-projec
 
     pub n_routed_experts: usize,
     pub n_shared_experts: usize,
     pub num_experts_per_tok: usize,
-    pub moe_intermediate_size: usize, //expert FFN size
-    pub first_k_dense_replace: usize, //how many layers use dense FFN
-    pub routed_scaling_factor: f32,   //
+    pub moe_intermediate_size: usize, // FFN hidden size for each individual expert
+    pub first_k_dense_replace: usize, // number of layers at the start that use dense FFN instead of MoE.
+    pub routed_scaling_factor: f32,   //multiplier applied to the routed expert output (amplifies expert contribution)
     pub scoring_func: String,         //"softmax"
     #[serde(default)]
-    pub norm_topk_prob: bool,
+    pub norm_topk_prob: bool,         // whether to renormalize expert probabilities after top-k selection.  For sigmoid routing (GLM) it would actually matter
 
     pub vocab_size: usize,
     #[serde(default)]

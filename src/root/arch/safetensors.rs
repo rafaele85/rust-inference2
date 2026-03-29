@@ -7,7 +7,8 @@ use half::f16;
 use memmap2::Mmap;
 use serde_json::{Map, Value};
 use crate::root::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs, AWQ_PACK_SIZE};
-use crate::root::common_types::Vecf32;
+use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::gpu::Gpu;
 
 pub struct TensorEntry {
     pub offsets: [u64; 2],
@@ -126,6 +127,34 @@ impl SafeTensor {
         }
     }
 
+
+    pub fn load_dense_ffns(&mut self, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
+        let has_dense_ffns = self.entries.contains_key(
+            &format!("model.layers.{}.mlp.gate_proj.weight", layer_no)
+        ) || self.entries.contains_key(
+            &format!("model.layers.{}.mlp.gate_proj.qweight", layer_no)
+        );
+        if has_dense_ffns  {
+            let gate_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight("mlp.gate_proj", layer_no), "gate_proj_w" );
+            let up_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight( "mlp.up_proj", layer_no), "up_proj_w");
+            let down_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight( "mlp.down_proj", layer_no), "down_proj_w" );
+
+            ( Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w) )
+        } else {
+            (None, None, None)
+        }
+    }
+
+
+    pub fn load_weight_optional(&mut self, name: &str, layer: usize) -> Option<Vecf32> {
+        let entries = &self.entries;
+        let key = format!("model.layers.{}.{}.weight", layer, name);
+        if entries.contains_key(&key) {
+            let b = load_tensor_to_f32(self, &key);
+            return Some(b);
+        }
+        None
+    }
 }
 
 pub fn resolve_hf_path(model_name: &str) -> String {
