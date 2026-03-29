@@ -8,5 +8,5 @@ mod linear;
 mod tokenizer;
 mod generate;
 pub mod load_layer;
-
+pub mod rope;
 pub mod tests;

@@ -2,12 +2,13 @@ use crate::root::activation::softmax;
 use crate::root::arch::llama::llama_config::LlamaConfig;
 use crate::root::arch::llama::llama_layer::LlamaLayer;
 use crate::root::arch::llama::llama_norm::rms_norm;
-use crate::root::arch::llama::rope::{apply_rope, compute_rope_freqs};
+use crate::root::arch::llama::llama_rope::{apply_rope};
 use crate::root::common_types::Vecf32;
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
 use crate::root::linear::add_to_vector;
 use crate::root::matmul::matmul_transposed_f16;
+use crate::root::rope::compute_rope_freqs;
 
 pub struct ComputeQKVArgs<'a> {
     normed: &'a mut Vecf32,
@@ -63,7 +64,7 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
     let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, &mut gpu);
     add_optional_bias(&mut v, v_proj_b);
 
-    let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta, head_dim/2);
+    let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta);
     let q_roped = apply_rope(&q, &cos, &sin, head_dim);
     let k_roped = apply_rope(&k, &cos, &sin, head_dim);
     kv_cache.append(layer_no, k_roped, v);

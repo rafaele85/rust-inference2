@@ -4,7 +4,7 @@ pub mod llama_transformer;
 pub mod llama_attention;
 mod llama_logits;
 mod llama_activation;
-mod rope;
+mod llama_rope;
 mod llama_norm;
 mod llama_linear;
 mod llama_layer;
