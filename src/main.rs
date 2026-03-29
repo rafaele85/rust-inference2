@@ -6,7 +6,7 @@ mod root;
 fn main() {
     let gpus = &mut Gpu::multiple(3);
 
-    qwen_awq_e2e_test(gpus);  //6 s
+    qwen_awq_e2e_test(gpus, 50);  //6 s
     // qwen3_moe_tests(gpus);  //34 s
 
     // qwen_tests(gpus);  //1.5 min

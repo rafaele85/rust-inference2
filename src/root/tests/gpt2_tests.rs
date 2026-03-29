@@ -4,7 +4,7 @@ use crate::root::generate::{generate, GenerateArgs};
 use crate::root::gpu::Gpu;
 use crate::root::tokenizer::BpeTokenizer;
 
-pub fn gpt2_tests(gpus: &mut Vec<Gpu>) {
+pub fn gpt2_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
 
     let gpt2_base_path = "model";
     let gpt2_tokenizer = BpeTokenizer::load(
@@ -17,7 +17,6 @@ pub fn gpt2_tests(gpus: &mut Vec<Gpu>) {
     let gpt2_model = GPT2Model::new(&mut safe_tensor_gpt2, gpus);
 
     let prompt = "The capital of France is";
-    let max_tokens = 50;
 
     let result = generate(GenerateArgs {
         prompt, tokenizer: &gpt2_tokenizer, max_tokens, gpus, eos_token_id: &gpt2_model.config.eos_token_id, num_layers: gpt2_model.config.n_layer

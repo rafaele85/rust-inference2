@@ -5,7 +5,7 @@ use crate::root::generate::{generate, GenerateArgs};
 use crate::root::gpu::Gpu;
 use crate::root::tokenizer::BpeTokenizer;
 
-pub fn qwen_tests(gpus: &mut Vec<Gpu>) {
+pub fn qwen_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     let qwen_path = resolve_hf_path("Qwen/Qwen2.5-14B-Instruct");
 
     let qwen_tokenizer = BpeTokenizer::load(
@@ -23,7 +23,7 @@ pub fn qwen_tests(gpus: &mut Vec<Gpu>) {
     let result = generate(GenerateArgs {
         prompt,
         tokenizer: &qwen_tokenizer,
-        max_tokens: 50,
+        max_tokens,
         gpus,
         eos_token_id: &qwen_model.config.eos_token_id,
         num_layers: qwen_model.config.num_hidden_layers,
@@ -33,7 +33,7 @@ pub fn qwen_tests(gpus: &mut Vec<Gpu>) {
 }
 
 
-pub fn qwen3_tests(gpus: &mut Vec<Gpu>) {
+pub fn qwen3_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     let qwen3_path = resolve_hf_path("Qwen/Qwen3-0.6B");
 
     let qwen3_tokenizer = BpeTokenizer::load(
@@ -51,7 +51,7 @@ pub fn qwen3_tests(gpus: &mut Vec<Gpu>) {
     let result = generate(GenerateArgs {
         prompt,
         tokenizer: &qwen3_tokenizer,
-        max_tokens: 50,
+        max_tokens,
         gpus,
         eos_token_id: &qwen3_model.config.eos_token_id,
         num_layers: qwen3_model.config.num_hidden_layers,
@@ -61,7 +61,7 @@ pub fn qwen3_tests(gpus: &mut Vec<Gpu>) {
 }
 
 
-pub fn qwen3_moe_tests(gpus: &mut Vec<Gpu>) {
+pub fn qwen3_moe_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     let qwen3_moe_path = resolve_hf_path("Qwen/Qwen3-30B-A3B-Instruct-2507");
 
     let qwen3_moe_tokenizer = BpeTokenizer::load(
@@ -82,7 +82,7 @@ pub fn qwen3_moe_tests(gpus: &mut Vec<Gpu>) {
     let result = generate(GenerateArgs {
         prompt,
         tokenizer: &qwen3_moe_tokenizer,
-        max_tokens: 50,
+        max_tokens,
         gpus,
         eos_token_id: &qwen3_moe_model.config.eos_token_id,
         num_layers: qwen3_moe_model.config.num_hidden_layers,
@@ -168,7 +168,7 @@ pub fn awq_matmul_test(gpus: &mut Vec<Gpu>) {
 }
 
 
-pub fn qwen_awq_e2e_test(gpus: &mut Vec<Gpu>) {
+pub fn qwen_awq_e2e_test(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     let path = resolve_hf_path("Qwen/Qwen2.5-0.5B-Instruct-AWQ");
     let tokenizer = BpeTokenizer::load(
         &path,
@@ -183,7 +183,7 @@ pub fn qwen_awq_e2e_test(gpus: &mut Vec<Gpu>) {
     let result = generate(GenerateArgs {
         prompt,
         tokenizer: &tokenizer,
-        max_tokens: 50,
+        max_tokens,
         gpus,
         eos_token_id: &model.config.eos_token_id,
         num_layers: model.config.num_hidden_layers,
