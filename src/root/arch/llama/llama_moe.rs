@@ -3,19 +3,7 @@ use half::f16;
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::moe::ExpertLike;
-
-pub struct LlamaExpert {
-    pub gate_proj_w: WeightF16,
-    pub up_proj_w: WeightF16,
-    pub down_proj_w: WeightF16,
-}
-
-impl ExpertLike for LlamaExpert {
-    fn gate_proj_w(&self) -> &WeightF16 { &self.gate_proj_w }
-    fn up_proj_w(&self) -> &WeightF16 { &self.up_proj_w }
-    fn down_proj_w(&self) -> &WeightF16 { &self.down_proj_w }
-}
+use crate::root::moe::StandardExpert;
 
 fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &mut Gpu) -> WeightF16 {
     let name = format!("mlp.experts.{}.{}", expert_no, weight_name);
@@ -32,12 +20,12 @@ fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: 
     w_gpu
 }
 
-fn load_expert(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, gpu: &mut Gpu) -> LlamaExpert {
+fn load_expert(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, gpu: &mut Gpu) -> StandardExpert {
     let gate_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "gate_proj", gpu);
     let up_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "up_proj", gpu);
     let down_proj_w = load_expert_weight(safe_tensor, layer_no, expert_no, "down_proj", gpu);
 
-    LlamaExpert {gate_proj_w, up_proj_w, down_proj_w}
+    StandardExpert {gate_proj_w, up_proj_w, down_proj_w}
 }
 
 fn get_num_experts(safe_tensor: &mut SafeTensor, layer_no: usize) -> usize {
@@ -80,7 +68,7 @@ fn load_experts_raw_data(safe_tensor: &SafeTensor, num_experts: usize, layer_no:
     raw_data
 }
 
-pub fn llama_load_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> Option<Vec<LlamaExpert>> {
+pub fn llama_load_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> Option<Vec<StandardExpert>> {
     let num_experts = get_num_experts(safe_tensor, layer_no);
     let key = format!("model.layers.{}.mlp.experts.{}.gate_proj.weight", layer_no, 0);
     if safe_tensor.entries.contains_key(&key) {
@@ -91,7 +79,7 @@ pub fn llama_load_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &G
             let gate_proj_w = gpu.dev.htod_sync_copy(gate).unwrap();
             let up_proj_w = gpu.dev.htod_sync_copy(up).unwrap();
             let down_proj_w = gpu.dev.htod_sync_copy(down).unwrap();
-            exps.push(LlamaExpert {gate_proj_w, up_proj_w, down_proj_w});
+            exps.push(StandardExpert {gate_proj_w, up_proj_w, down_proj_w});
         }
 
         return Some(exps);

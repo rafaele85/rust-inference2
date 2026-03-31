@@ -4,11 +4,26 @@ use crate::root::gpu::Gpu;
 use crate::root::linear::{add_to_vector, hadamard, scale_and_add, ScaleAndAddArgs};
 use crate::root::matmul::matmul_transposed_f16;
 
+pub struct StandardExpert {
+    pub gate_proj_w: WeightF16,
+    pub up_proj_w: WeightF16,
+    pub down_proj_w: WeightF16,
+}
+
+
 pub trait ExpertLike {
     fn gate_proj_w(&self) -> &WeightF16;
     fn up_proj_w(&self) -> &WeightF16;
     fn down_proj_w(&self) -> &WeightF16;
 }
+
+
+impl ExpertLike for StandardExpert {
+    fn gate_proj_w(&self) -> &WeightF16 { &self.gate_proj_w }
+    fn up_proj_w(&self) -> &WeightF16 { &self.up_proj_w }
+    fn down_proj_w(&self) -> &WeightF16 { &self.down_proj_w }
+}
+
 
 pub struct MoeFFN<'a, TExpert: ExpertLike> {
     pub hidden: &'a mut Vecf32,

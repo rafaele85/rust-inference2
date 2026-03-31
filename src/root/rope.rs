@@ -30,7 +30,8 @@ pub struct ApplyRopeArgs<'a> {
 
 pub fn apply_rope<'a>(args: ApplyRopeArgs<'a>) -> &'a mut Vecf32 {
     let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim} = args;
-    let half = head_dim / 2;
+    let rope_dim = head_dim - nope_dim;
+    let half = rope_dim / 2;
     for h in 0..num_heads {
         let offset = h * head_dim + nope_dim;
         apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin});
