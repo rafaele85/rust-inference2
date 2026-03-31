@@ -1,14 +1,14 @@
 use crate::root::activation::softmax;
 use crate::root::arch::llama::llama_config::LlamaConfig;
 use crate::root::arch::llama::llama_layer::LlamaLayer;
-use crate::root::arch::llama::llama_norm::rms_norm;
-use crate::root::arch::llama::llama_rope::{apply_rope};
+use crate::root::attention::{compute_qk_scores, project_v_to_attn, ComputeQKScoresArgs};
 use crate::root::common_types::Vecf32;
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
 use crate::root::linear::add_to_vector;
 use crate::root::matmul::matmul_transposed_f16;
-use crate::root::rope::compute_rope_freqs;
+use crate::root::norm::rms_norm;
+use crate::root::rope::{apply_rope, compute_rope_freqs, ApplyRopeArgs};
 
 pub struct ComputeQKVArgs<'a> {
     normed: &'a mut Vecf32,
@@ -65,8 +65,15 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
     add_optional_bias(&mut v, v_proj_b);
 
     let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta);
-    let q_roped = apply_rope(&q, &cos, &sin, head_dim);
-    let k_roped = apply_rope(&k, &cos, &sin, head_dim);
+
+    let mut q_roped = vec![0.0f32; q.len()];
+    let q_num_heads = q.len() / head_dim;
+    apply_rope(ApplyRopeArgs { out: &mut q_roped, x: &q, num_heads: q_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0});
+
+    let mut k_roped = vec![0.0f32; k.len()];
+    let k_num_heads = k.len() / head_dim;
+    apply_rope(ApplyRopeArgs { out: &mut k_roped, x: &k, num_heads: k_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0});
+
     kv_cache.append(layer_no, k_roped, v);
 
     let k_cache = &kv_cache.k[layer_no];
@@ -87,27 +94,6 @@ pub struct LlamaGQAArgs<'a> {
     pub position: usize,
 }
 
-pub struct ComputeScoresArgs<'a> {
-    cache_len: usize,
-    q_offset: usize,
-    head_dim: usize,
-    q: &'a Vecf32,
-    kv_offset: usize,
-    k_cache: &'a PositionKVVectors
-}
-fn llama_compute_scores(args: ComputeScoresArgs) -> Vecf32 {
-    let ComputeScoresArgs {cache_len, head_dim, q_offset, kv_offset, q, k_cache} = args;
-    let mut scores = vec![0.0f32; cache_len];
-    for pos in 0..cache_len {
-        let mut dot = 0.0f32;
-        for i in 0..head_dim {
-            dot += q[q_offset + i] * k_cache[pos][kv_offset + i];
-        }
-        scores[pos] = dot / (head_dim as f32).sqrt();
-    }
-
-    scores
-}
 pub fn llama_gqa(args: LlamaGQAArgs) {
     let LlamaGQAArgs {config, gpu, layer, hidden, kv_cache, normed, layer_no, position } = args;
 
@@ -125,15 +111,9 @@ pub fn llama_gqa(args: LlamaGQAArgs) {
         let q_offset = h * config.head_dim;
         let kv_offset = kv_h * config.head_dim;
 
-        let scores = llama_compute_scores(ComputeScoresArgs {kv_offset, head_dim: config.head_dim, k_cache, cache_len, q, q_offset});
+        let probs = compute_qk_scores(ComputeQKScoresArgs {kv_offset, head_dim: config.head_dim, k_cache, cache_len, q, q_offset});
 
-        let probs = softmax(&scores);
-
-        for pos in 0..cache_len {
-            for i in 0..config.head_dim {
-                attn_out[q_offset+i] += probs[pos] * v_cache[pos][kv_offset+i];
-            }
-        }
+        project_v_to_attn(&mut attn_out, &probs, &v_cache, cache_len, config.head_dim, kv_offset, q_offset);
     }
 
     let projected = matmul_transposed_f16(&attn_out, &layer.o_proj_w, config.hidden_size, gpu);

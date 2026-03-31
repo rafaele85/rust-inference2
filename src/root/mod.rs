@@ -10,3 +10,7 @@ mod generate;
 pub mod load_layer;
 pub mod rope;
 pub mod tests;
+pub mod norm;
+pub mod attention;
+pub mod logits;
+pub mod moe;

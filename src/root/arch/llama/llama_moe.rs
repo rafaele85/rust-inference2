@@ -1,19 +1,20 @@
 use std::thread;
 use half::f16;
-use crate::root::activation::softmax;
-use crate::root::arch::llama::llama_activation::silu;
-use crate::root::arch::llama::llama_config::LlamaConfig;
-use crate::root::arch::llama::llama_linear::hadamard;
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::linear::{add_to_vector, scale_and_add, ScaleAndAddArgs};
-use crate::root::matmul::matmul_transposed_f16;
+use crate::root::moe::ExpertLike;
 
 pub struct LlamaExpert {
     pub gate_proj_w: WeightF16,
     pub up_proj_w: WeightF16,
     pub down_proj_w: WeightF16,
+}
+
+impl ExpertLike for LlamaExpert {
+    fn gate_proj_w(&self) -> &WeightF16 { &self.gate_proj_w }
+    fn up_proj_w(&self) -> &WeightF16 { &self.up_proj_w }
+    fn down_proj_w(&self) -> &WeightF16 { &self.down_proj_w }
 }
 
 fn load_expert_weight(safe_tensor: &mut SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str, gpu: &mut Gpu) -> WeightF16 {
@@ -98,110 +99,10 @@ pub fn llama_load_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &G
     None
 }
 
-fn compute_scores(normed: &Vecf32, router_w: &Vecf32, hidden_size: usize, num_experts: usize) -> Vecf32 {
-    let mut scores = vec![0.0f32; num_experts];
-    for i in 0..num_experts {
-        let mut dot = 0.0f32;
-        for j in 0..hidden_size {
-            dot += normed[j] * router_w[i * hidden_size + j];
-        }
-        scores[i] = dot;
-    }
-    scores
-}
-
-fn get_top_scores(scores: &Vecf32, num_experts: usize, num_experts_per_tok: usize) -> (Vecf32, Vec<usize>) {
-    let mut top_indices: Vec<usize> = (0..num_experts).collect();
-    top_indices.sort_by(|&a, &b| {
-        let score_b = scores[b];
-        let score_a = scores[a];
-        let res = score_b.partial_cmp(&score_a).unwrap();
-        res
-    });
-    top_indices.truncate(num_experts_per_tok);
-
-    let top_scores: Vecf32 = top_indices.iter().map(|&i| scores[i]).collect();
-    (top_scores, top_indices)
-}
 
 pub fn normalize_weights(weights: &mut Vecf32) {
     let sum = weights.iter().sum::<f32>();
     for w in weights.iter_mut() {
         *w /= sum;
     }
-}
-
-struct ApplyExpertArgs<'a> {
-    normed: &'a Vecf32,
-    hidden_size: usize,
-    expert: &'a LlamaExpert,
-    moe_intermediate_size: usize,
-    w: f32,
-    gpu: &'a mut Gpu,
-    moe_out: &'a mut Vecf32,
-}
-
-fn apply_expert(args: ApplyExpertArgs) {
-    let ApplyExpertArgs {normed, expert, moe_intermediate_size,  gpu, hidden_size, w, mut moe_out} = args;
-    let gate_proj_w = &expert.gate_proj_w;
-    let up_proj_w = &expert.up_proj_w;
-    let down_proj_w = &expert.down_proj_w;
-
-    let gate = matmul_transposed_f16(normed, &gate_proj_w, moe_intermediate_size, gpu);
-    let up = matmul_transposed_f16(normed, &up_proj_w, moe_intermediate_size, gpu);
-    let silu_gate = silu(&gate);
-    let ffn_act = hadamard(silu_gate, up, moe_intermediate_size);
-
-    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, hidden_size, gpu);
-    scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out, start_offset: 0, num_iterations: hidden_size});
-}
-struct ApplyExpertsArgs<'a> {
-    normed: &'a Vecf32,
-    hidden_size: usize,
-    top_indices: &'a Vec<usize>,
-    experts: &'a Vec<LlamaExpert>,
-    moe_intermediate_size: usize,
-    gpu: &'a mut Gpu,
-    expert_probs : &'a Vecf32,
-}
-
-fn apply_experts(args: ApplyExpertsArgs) -> Vecf32 {
-    let ApplyExpertsArgs {hidden_size, top_indices, experts, normed, moe_intermediate_size, gpu, expert_probs} = args;
-    let mut moe_out = vec![0.0f32; hidden_size];
-
-    for (k, &expert_idx) in top_indices.iter().enumerate() {
-        let expert = &experts[expert_idx];
-        let w = expert_probs[k];
-        apply_expert(ApplyExpertArgs {normed, hidden_size, w, moe_intermediate_size, moe_out: &mut moe_out, expert, gpu});
-    }
-
-    moe_out
-}
-
-pub struct LlamaMoeFFN<'a> {
-    pub hidden: &'a mut Vecf32,
-    pub normed: &'a Vecf32,
-    pub router_w: &'a Vecf32,
-    pub experts: &'a Vec<LlamaExpert>,
-    pub config: &'a LlamaConfig,
-    pub gpu: &'a mut Gpu,
-    pub layer_no: usize,
-}
-
-pub fn llama_moe_ffn(args: LlamaMoeFFN) {
-    let LlamaMoeFFN {mut hidden, normed, router_w, experts, config, gpu, .. } = args;
-    let LlamaConfig {num_experts_per_tok, moe_intermediate_size, hidden_size, ..} = config;
-    let num_experts = experts.len();
-
-    let scores = compute_scores(normed, router_w, *hidden_size, num_experts);
-
-    let (top_scores, top_indices) = get_top_scores(&scores, num_experts, *num_experts_per_tok);
-
-    let expert_probs  = softmax(&top_scores);
-
-    let moe_out = apply_experts(ApplyExpertsArgs {
-        top_indices: &top_indices, gpu, hidden_size: *hidden_size, experts, normed, moe_intermediate_size: *moe_intermediate_size, expert_probs : &expert_probs
-    });
-
-    add_to_vector(&mut hidden, &moe_out);
 }

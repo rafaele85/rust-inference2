@@ -1,17 +1,16 @@
+use crate::root::activation::silu;
 use crate::root::arch::llama::llama::LlamaModel;
-use crate::root::arch::llama::llama_activation::silu;
 use crate::root::arch::llama::llama_attention::{llama_gqa, LlamaGQAArgs};
 use crate::root::arch::llama::llama_config::LlamaConfig;
 use crate::root::arch::llama::llama_layer::LlamaLayer;
-use crate::root::arch::llama::llama_linear::hadamard;
-use crate::root::arch::llama::llama_logits::llama_logits;
-use crate::root::arch::llama::llama_moe::{llama_moe_ffn, LlamaMoeFFN};
-use crate::root::arch::llama::llama_norm::rms_norm;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
-use crate::root::linear::add_to_vector;
+use crate::root::linear::{add_to_vector, hadamard};
+use crate::root::logits::logits;
 use crate::root::matmul::matmul_transposed_f16;
+use crate::root::moe::{moe_ffn, MoeFFN};
+use crate::root::norm::rms_norm;
 
 fn llama_ffn(hidden: &mut Vecf32, layer: &LlamaLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &LlamaConfig, gpu: &mut Gpu) {
     let normed2 = rms_norm(&hidden, &layer.post_norm_w, config.rms_norm_eps);
@@ -49,7 +48,9 @@ pub fn llama_layer(args: LlamaLayerArgs) {
 
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
-        llama_moe_ffn(LlamaMoeFFN {hidden, normed: &normed2, router_w: &router_w, experts: &experts, config, gpu, layer_no});
+        moe_ffn(MoeFFN {
+            hidden, normed: &normed2, router_w: &router_w, experts: &experts, num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size, hidden_size: config.hidden_size, gpu, layer_no
+        });
     } else {
         if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
             llama_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, gpu);
@@ -87,7 +88,7 @@ pub fn llama_generate_token(args: LlamaGenerateTokenArgs) -> usize {
     }
 
     let default_gpu = get_default_gpu(&mut gpus, "logits");
-    let output_token_id = llama_logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
+    let output_token_id = logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
 
     output_token_id
 }
