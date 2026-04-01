@@ -1,5 +1,8 @@
+use std::thread;
+use half::f16;
 use crate::root::activation::{silu, softmax};
-use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::arch::safetensors::{load_tensor_awq, SafeTensor};
+use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
 use crate::root::linear::{add_to_vector, hadamard, scale_and_add, ScaleAndAddArgs};
 use crate::root::matmul::matmul_transposed_f16;
@@ -38,17 +41,16 @@ pub struct MoeFFN<'a, TExpert: ExpertLike> {
 }
 
 pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
-    let MoeFFN {mut hidden, normed, router_w, experts, gpu, num_experts_per_tok, moe_intermediate_size, hidden_size, .. } = args;
+    let MoeFFN {mut hidden, normed, router_w, experts, gpu, num_experts_per_tok, moe_intermediate_size, hidden_size, layer_no} = args;
     let num_experts = experts.len();
 
     let scores = compute_scores(normed, router_w, hidden_size, num_experts);
 
-    let (top_scores, top_indices) = get_top_scores(&scores, num_experts, num_experts_per_tok);
-
-    let expert_probs  = softmax(&top_scores);
+    let all_probs = softmax(&scores);
+    let (top_probs, top_indices) = get_top_scores(&all_probs, num_experts, num_experts_per_tok);
 
     let moe_out = apply_experts(ApplyExpertsArgs {
-        top_indices: &top_indices, gpu, hidden_size, experts, normed, moe_intermediate_size, expert_probs : &expert_probs
+        top_indices: &top_indices, gpu, hidden_size, experts, normed, moe_intermediate_size, expert_probs : &top_probs
     });
 
     add_to_vector(&mut hidden, &moe_out);
@@ -132,4 +134,87 @@ fn get_top_scores(scores: &Vecf32, num_experts: usize, num_experts_per_tok: usiz
 
     let top_scores: Vecf32 = top_indices.iter().map(|&i| scores[i]).collect();
     (top_scores, top_indices)
+}
+
+
+fn get_num_experts(safe_tensor: &mut SafeTensor, layer_no: usize) -> usize {
+    let num_experts = (0..).take_while(|e| {
+        safe_tensor.entries.contains_key(&format!("model.layers.{}.mlp.experts.{}.gate_proj.weight", layer_no, e))
+            || safe_tensor.entries.contains_key(&format!("model.layers.{}.mlp.experts.{}.gate_proj.qweight", layer_no, e))
+    }).count();
+
+    num_experts
+}
+
+fn read_and_convert(safe_tensor: &SafeTensor, layer_no: usize, expert_no: usize, weight_name: &str) -> Vecf16 {
+    let full_name = format!("model.layers.{}.mlp.experts.{}.{}.weight", layer_no, expert_no, weight_name);
+    let entry = &safe_tensor.entries[&full_name];
+    let shard_idx = entry.shard_idx;
+    let start = safe_tensor.data_offsets[shard_idx] as usize + entry.offsets[0] as usize;
+    let byte_len = (entry.offsets[1] - entry.offsets[0]) as usize;
+    let bytes = &safe_tensor.mmaps[shard_idx][start..start + byte_len];
+
+    bytes.chunks_exact(2).map(|c| {
+        let bits = u16::from_le_bytes(c.try_into().unwrap());
+        let f32_val = f32::from_bits((bits as u32) << 16);
+        f16::from_f32(f32_val)
+    }).collect()
+}
+
+
+fn load_experts_raw_data(safe_tensor: &SafeTensor, num_experts: usize, layer_no: usize) -> Vec<(Vecf16, Vecf16, Vecf16)> {
+    let raw_data: Vec<(Vecf16, Vecf16, Vecf16)> = thread::scope(|s| {
+        let handles: Vec<_> = (0..num_experts).map(|e| {
+            let st = &*safe_tensor;
+            s.spawn(move || {
+                let gate = read_and_convert(st, layer_no, e, "gate_proj");
+                let up = read_and_convert(st, layer_no, e, "up_proj");
+                let down = read_and_convert(st, layer_no, e, "down_proj");
+                (gate, up, down)
+            })
+        }).collect();
+        let res = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        res
+    });
+
+    raw_data
+}
+
+pub fn load_experts_bf16(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &Gpu) -> Option<Vec<StandardExpert>> {
+    let num_experts = get_num_experts(safe_tensor, layer_no);
+    if num_experts == 0 {
+        return None;
+    }
+
+    let raw_data: Vec<(Vecf16, Vecf16, Vecf16)> = load_experts_raw_data(safe_tensor, num_experts, layer_no);
+
+    let mut exps = Vec::with_capacity(num_experts);
+    for (gate, up, down) in &raw_data {
+        let gate_proj_w = gpu.dev.htod_sync_copy(gate).unwrap();
+        let up_proj_w = gpu.dev.htod_sync_copy(up).unwrap();
+        let down_proj_w = gpu.dev.htod_sync_copy(down).unwrap();
+        exps.push(StandardExpert { gate_proj_w, up_proj_w, down_proj_w });
+    }
+    Some(exps)
+}
+
+pub fn load_experts_awq(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Option<Vec<StandardExpert>> {
+    let num_experts = get_num_experts(safe_tensor, layer_no);
+    if num_experts == 0 {
+        return None;
+    }
+
+    let mut exps = Vec::with_capacity(num_experts);
+    for e in 0..num_experts {
+        let gate_f32 = load_tensor_awq(safe_tensor, &format!("model.layers.{}.mlp.experts.{}.gate_proj", layer_no, e));
+        let up_f32 = load_tensor_awq(safe_tensor, &format!("model.layers.{}.mlp.experts.{}.up_proj", layer_no, e));
+        let down_f32 = load_tensor_awq(safe_tensor, &format!("model.layers.{}.mlp.experts.{}.down_proj", layer_no, e));
+
+        let gate_proj_w = gpu.upload_f16_from_f32(&gate_f32, &format!("exp{}gate{}", layer_no, e));
+        let up_proj_w = gpu.upload_f16_from_f32(&up_f32, &format!("exp{}up{}", layer_no, e));
+        let down_proj_w = gpu.upload_f16_from_f32(&down_f32, &format!("exp{}down{}", layer_no, e));
+
+        exps.push(StandardExpert { gate_proj_w, up_proj_w, down_proj_w });
+    }
+    Some(exps)
 }

@@ -1,9 +1,9 @@
 use crate::root::arch::common::LoadLayer;
-use crate::root::arch::llama::llama_moe::{LlamaExpert};
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
 use crate::root::load_layer::{load_common_weights, CommonWeights};
+use crate::root::moe::StandardExpert;
 
 pub struct DeepseekLayer {
     pub input_norm_w: Vecf32,
@@ -21,7 +21,7 @@ pub struct DeepseekLayer {
     pub down_proj_w: Option<WeightF16>,
 
     pub expert_router_w : Option<Vecf32>,
-    pub experts: Option<Vec<LlamaExpert>>,
+    pub experts: Option<Vec<StandardExpert>>,
 
     pub shared_gate_proj_w: Option<WeightF16>,
     pub shared_up_proj_w: Option<WeightF16>,
@@ -50,7 +50,7 @@ impl LoadLayer for DeepseekLayer {
 
         let kv_a_layernorm_w = safe_tensor.load_layer_weight("self_attn.kv_a_layernorm", layer_no);
         let kv_a_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.kv_a_proj_with_mqa", layer_no), &format!("kv_a_proj_w{}", layer_no));
-        let kv_b_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.kv_b_proj_with_mqa", layer_no), &format!("kv_b_proj_w{}", layer_no));
+        let kv_b_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.kv_b_proj", layer_no), &format!("kv_b_proj_w{}", layer_no));
         let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) = load_shared_experts(safe_tensor, layer_no, gpu);
 
         Self {

@@ -25,16 +25,17 @@ pub struct ApplyRopeArgs<'a> {
     pub cos: &'a Arrf32,
     pub sin: &'a Arrf32,
     pub head_dim: usize,
-    pub nope_dim: usize
+    pub nope_dim: usize,
+    pub interleaved: bool,
 }
 
 pub fn apply_rope<'a>(args: ApplyRopeArgs<'a>) -> &'a mut Vecf32 {
-    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim} = args;
+    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved} = args;
     let rope_dim = head_dim - nope_dim;
     let half = rope_dim / 2;
     for h in 0..num_heads {
         let offset = h * head_dim + nope_dim;
-        apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin});
+        apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin, interleaved});
     }
 
     out
@@ -47,16 +48,16 @@ pub struct ApplyRopeToHeadArgs<'a> {
     pub sin: &'a Arrf32,
     pub half: usize,
     pub offset: usize,
+    pub interleaved: bool,
 }
 
 pub fn apply_rope_to_head(args: ApplyRopeToHeadArgs) {
-    let ApplyRopeToHeadArgs {half, x, offset, cos, sin, out} = args;
+    let ApplyRopeToHeadArgs {half, x, offset, cos, sin, out, interleaved} = args;
     for i in 0..half {
-        let x1 = x[offset + i];
-        let x2 = x[offset + half + i];
-        let out1 = x1 * cos[i] - x2 * sin[i];
-        let out2 = x2 * cos[i] + x1 * sin[i];
-        out[offset + i] = out1;
-        out[offset + half + i] = out2;
+        let (i1, i2) = if interleaved { (i * 2, i * 2 + 1) } else { (i, i + half) };
+        let x1 = x[offset + i1];
+        let x2 = x[offset + i2];
+        out[offset + i1] = x1 * cos[i] - x2 * sin[i];
+        out[offset + i2] = x2 * cos[i] + x1 * sin[i];
     }
 }

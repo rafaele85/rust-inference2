@@ -1,4 +1,7 @@
+use crate::root::tokenizer::deserialize_eos_token_id;
+use std::fs;
 use serde::Deserialize;
+use serde_json::from_str;
 
 #[derive(Deserialize)]
 pub struct DeepseekConfig {
@@ -29,6 +32,15 @@ pub struct DeepseekConfig {
     pub norm_topk_prob: bool,         // whether to renormalize expert probabilities after top-k selection.  For sigmoid routing (GLM) it would actually matter
 
     pub vocab_size: usize,
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_eos_token_id")]
     pub eos_token_id: Vec<u32>,
+}
+
+impl DeepseekConfig {
+    pub fn load(path: &str) -> Self {
+        let content = fs::read_to_string(&path).expect(&format!("Unable to read file {}", &path));
+        let mut config: DeepseekConfig = from_str(&content).expect(&format!("Unable to deserialize file"));
+
+        config
+    }
 }

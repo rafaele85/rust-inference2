@@ -1,8 +1,7 @@
-use crate::root::arch::llama::llama_moe::{llama_load_experts};
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::moe::StandardExpert;
+use crate::root::moe::{load_experts_awq, load_experts_bf16, StandardExpert};
 
 pub struct CommonWeights {
     pub input_norm_w: Vecf32,
@@ -26,7 +25,12 @@ pub fn load_common_weights(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &
     let (gate_proj_w, up_proj_w, down_proj_w) = safe_tensor.load_dense_ffns(layer_no, gpu);
 
     let expert_router_w = safe_tensor.load_weight_optional("mlp.gate", layer_no);
-    let experts = llama_load_experts(safe_tensor, layer_no, &gpu);
+    let bf16_key = format!("model.layers.{}.mlp.experts.0.gate_proj.weight", layer_no);
+    let experts = if safe_tensor.entries.contains_key(&bf16_key) {
+        load_experts_bf16(safe_tensor, layer_no, gpu)
+    } else {
+        load_experts_awq(safe_tensor, layer_no, gpu)
+    };
 
     CommonWeights {input_norm_w, post_norm_w, q_proj_w, o_proj_w, gate_proj_w, up_proj_w, down_proj_w, experts, expert_router_w}
 }
