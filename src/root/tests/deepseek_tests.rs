@@ -18,11 +18,7 @@ pub fn deepseek_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
 
     let model = DeepseekModel::new(&mut safe_tensor, gpus);
 
-    // let prompt = "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:";
-    let prompt = "<｜begin▁of▁sentence｜>User: Explain quantum entanglement in simple terms.\n\nAssistant:";
-
-    let input_ids = tokenizer.encode(prompt);
-    println!("Rust token IDs ({}): {:?}", input_ids.len(), input_ids);
+    let prompt = "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:";
 
     let result = generate(GenerateArgs {
         prompt, tokenizer: &tokenizer, max_tokens, gpus, eos_token_id: &model.config.eos_token_id, num_layers: model.config.num_hidden_layers
