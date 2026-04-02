@@ -14,9 +14,7 @@ fn main() {
     // qwen3_moe_tests(gpus, 50);  //34 s
 
     // qwen_tests(gpus, 50);  //1.5 min
-     llama_tests(gpus, 50);  //7s
+     // llama_tests(gpus, 50);  //7s
     // gpt2_tests(gpus, 50);  //2s
-       // deepseek_tests(gpus, 50);
-    // deepseek_multi_token_test(gpus);
-
+    deepseek_tests(gpus, 50);
 }

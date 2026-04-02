@@ -224,7 +224,10 @@ impl BpeTokenizer {
             }
         }
 
-        String::from_utf8_lossy(&bytes).to_string()
+        let text = String::from_utf8_lossy(&bytes).to_string();
+        let res = self.cleanup_decode(&text);
+        
+        res
     }
 }
 

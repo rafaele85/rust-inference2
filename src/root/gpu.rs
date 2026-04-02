@@ -35,6 +35,8 @@ impl GpuScratch {
         }
     }
 
+    /// Only safe for use with GEMM calls where beta = 0.0, which overwrites
+    /// the entire output buffer. Do not reuse for other purposes without zeroing first.
     fn ensure_f32(&mut self, dev: &Arc<CudaDevice>, in_len: usize, out_len: usize) {
         if self.input_f32.len() != in_len {
             self.input_f32 = dev.alloc_zeros::<f32>(in_len).unwrap();
@@ -44,6 +46,8 @@ impl GpuScratch {
         }
     }
 
+    /// Only safe for use with GEMM calls where beta = 0.0, which overwrites
+    /// the entire output buffer. Do not reuse for other purposes without zeroing first.
     fn ensure_f16(&mut self, dev: &Arc<CudaDevice>, in_len: usize, out_len: usize) {
         if self.input_f16.len() != in_len {
             self.input_f16 = dev.alloc_zeros::<f16>(in_len).unwrap();
