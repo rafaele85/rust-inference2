@@ -39,7 +39,7 @@ pub struct DeepseekConfig {
 impl DeepseekConfig {
     pub fn load(path: &str) -> Self {
         let content = fs::read_to_string(&path).expect(&format!("Unable to read file {}", &path));
-        let mut config: DeepseekConfig = from_str(&content).expect(&format!("Unable to deserialize file"));
+        let config: DeepseekConfig = from_str(&content).expect(&format!("Unable to deserialize file"));
 
         config
     }

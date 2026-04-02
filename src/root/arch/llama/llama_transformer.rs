@@ -49,7 +49,11 @@ pub fn llama_layer(args: LlamaLayerArgs) {
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
         moe_ffn(MoeFFN {
-            hidden, normed: &normed2, router_w: &router_w, experts: &experts, num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size, hidden_size: config.hidden_size, gpu, layer_no
+            hidden, normed: &normed2, router_w: &router_w, experts: &experts,
+            num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size,
+            hidden_size: config.hidden_size, gpu, layer_no,
+            norm_topk_prob: false,
+            routed_scaling_factor: 1.0,
         });
     } else {
         if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {

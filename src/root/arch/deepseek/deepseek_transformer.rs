@@ -71,7 +71,10 @@ pub fn deepseek_layer(args: DeepseekLayerArgs) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
         moe_ffn(MoeFFN {
             hidden, normed: &normed2, router_w, experts, layer_no,
-            num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size, hidden_size: config.hidden_size, gpu
+            num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size,
+            hidden_size: config.hidden_size, gpu,
+            norm_topk_prob: config.norm_topk_prob,
+            routed_scaling_factor: config.routed_scaling_factor,
         });
         deepseek_shared_experts(DeepseekSharedExpertsArgs {hidden, normed: &normed2, layer, config, gpu, layer_no});
     } else {

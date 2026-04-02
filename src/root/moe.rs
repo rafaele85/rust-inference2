@@ -38,22 +38,44 @@ pub struct MoeFFN<'a, TExpert: ExpertLike> {
     pub num_experts_per_tok: usize,
     pub moe_intermediate_size: usize,
     pub hidden_size: usize,
+    pub norm_topk_prob: bool,
+    pub routed_scaling_factor: f32,
 }
 
 pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
-    let MoeFFN {mut hidden, normed, router_w, experts, gpu, num_experts_per_tok, moe_intermediate_size, hidden_size, layer_no} = args;
+    let MoeFFN {
+        mut hidden, normed, router_w, experts, gpu,
+        num_experts_per_tok, moe_intermediate_size, hidden_size, layer_no,
+        norm_topk_prob, routed_scaling_factor
+    } = args;
     let num_experts = experts.len();
 
     let scores = compute_scores(normed, router_w, hidden_size, num_experts);
 
     let all_probs = softmax(&scores);
-    let (top_probs, top_indices) = get_top_scores(&all_probs, num_experts, num_experts_per_tok);
+    let (mut top_probs, top_indices) = get_top_scores(&all_probs, num_experts, num_experts_per_tok);
+
+    if norm_topk_prob {
+        let sum: f32 = top_probs.iter().sum();
+        if sum > 0.0 {
+            for p in top_probs.iter_mut() {
+                *p /= sum;
+            }
+        }
+    }
 
     let moe_out = apply_experts(ApplyExpertsArgs {
         top_indices: &top_indices, gpu, hidden_size, experts, normed, moe_intermediate_size, expert_probs : &top_probs
     });
 
-    add_to_vector(&mut hidden, &moe_out);
+    if routed_scaling_factor != 1.0 {
+        let scaled: Vecf32 = moe_out.iter().map(|&x| x * routed_scaling_factor).collect();
+        add_to_vector(&mut hidden, &scaled);
+    } else {
+        add_to_vector(&mut hidden, &moe_out);
+    }
+
+
 }
 
 
@@ -217,4 +239,29 @@ pub fn load_experts_awq(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut
         exps.push(StandardExpert { gate_proj_w, up_proj_w, down_proj_w });
     }
     Some(exps)
+}
+
+
+#[test]
+fn top_k_probs_should_sum_to_one() {
+    let num_experts = 6;
+    let num_experts_per_tok = 2;
+
+    let router_logits = vec![1.0, 5.0, 0.5, 3.0, 0.1, 2.0];
+    let all_probs = softmax(&router_logits);
+
+    let (mut top_probs, top_indices) = get_top_scores(&all_probs, num_experts, num_experts_per_tok);
+
+    // Simulate norm_topk_prob = true
+    let sum: f32 = top_probs.iter().sum();
+    for p in top_probs.iter_mut() {
+        *p /= sum;
+    }
+
+    let top_sum: f32 = top_probs.iter().sum();
+    assert!(
+        (top_sum - 1.0).abs() < 1e-6,
+        "top-k probs should sum to 1.0 after renormalization, got {}",
+        top_sum
+    );
 }
