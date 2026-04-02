@@ -11,9 +11,3 @@ pub fn llama_load_bias(safe_tensor : &mut SafeTensor, name: &str, layer: usize) 
     None
 }
 
-
-pub fn llama_load_weight_f16(safe_tensor: &mut SafeTensor, name: &str, layer: usize) -> Vecf32 {
-    let prefix = format!("model.layers.{}", layer);
-    let w = load_tensor_to_f32(safe_tensor, &format!("{}.{}.weight", prefix, name));
-    w
-}

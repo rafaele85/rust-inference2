@@ -1,4 +1,3 @@
-use crate::root::activation::softmax;
 use crate::root::arch::llama::llama_config::LlamaConfig;
 use crate::root::arch::llama::llama_layer::LlamaLayer;
 use crate::root::attention::{compute_qk_scores, project_v_to_attn, ComputeQKScoresArgs};
@@ -20,7 +19,7 @@ pub struct ComputeQKVArgs<'a> {
     gpu: &'a mut Gpu,
 }
 
-fn add_optional_bias(vec: &mut Vecf32, optional_bias: &Option<Vecf32>) {
+fn add_bias(vec: &mut Vecf32, optional_bias: &Option<Vecf32>) {
     if let Some(bias) = optional_bias {
         add_to_vector(vec, &bias);
     }
@@ -52,27 +51,27 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
     let LlamaConfig {kv_dim, head_dim, rope_theta, attn_dim, num_attention_heads, rms_norm_eps, num_key_value_heads,  ..} = *config;
 
     let mut q = matmul_transposed_f16(&normed, q_proj_w, attn_dim, &mut gpu);
-    add_optional_bias(&mut q, q_proj_b);
+    add_bias(&mut q, q_proj_b);
 
     let mut k = matmul_transposed_f16(&normed, k_proj_w, kv_dim, &mut gpu);
-    add_optional_bias(&mut k, k_proj_b);
+    add_bias(&mut k, k_proj_b);
 
     apply_qk_norm(ApplyQKNormArgs { vec: &mut q, norm_w: &layer.q_norm_w, num_heads: num_attention_heads, head_dim, eps: rms_norm_eps});
-
     apply_qk_norm(ApplyQKNormArgs { vec: &mut k, norm_w: &layer.k_norm_w, num_heads: num_key_value_heads, head_dim, eps: rms_norm_eps});
 
     let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, &mut gpu);
-    add_optional_bias(&mut v, v_proj_b);
+    add_bias(&mut v, v_proj_b);
 
     let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta);
 
     let mut q_roped = vec![0.0f32; q.len()];
     let q_num_heads = q.len() / head_dim;
-    apply_rope(ApplyRopeArgs { out: &mut q_roped, x: &q, num_heads: q_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false});
+    let half = head_dim / 2;
+    apply_rope(ApplyRopeArgs { out: &mut q_roped, x: &q, num_heads: q_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false, half});
 
     let mut k_roped = vec![0.0f32; k.len()];
     let k_num_heads = k.len() / head_dim;
-    apply_rope(ApplyRopeArgs { out: &mut k_roped, x: &k, num_heads: k_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false});
+    apply_rope(ApplyRopeArgs { out: &mut k_roped, x: &k, num_heads: k_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false, half});
 
     kv_cache.append(layer_no, k_roped, v);
 

@@ -26,13 +26,12 @@ pub struct ApplyRopeArgs<'a> {
     pub sin: &'a Arrf32,
     pub head_dim: usize,
     pub nope_dim: usize,
+    pub half: usize,
     pub interleaved: bool,
 }
 
 pub fn apply_rope<'a>(args: ApplyRopeArgs<'a>) -> &'a mut Vecf32 {
-    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved} = args;
-    let rope_dim = head_dim - nope_dim;
-    let half = rope_dim / 2;
+    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved, half} = args;
     for h in 0..num_heads {
         let offset = h * head_dim + nope_dim;
         apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin, interleaved});
