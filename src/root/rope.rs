@@ -1,17 +1,14 @@
 use crate::root::common_types::{Arrf32, Vecf32};
 
-pub fn compute_rope_freqs(head_dim: usize, pos: usize, theta: f32) -> (Vecf32, Vecf32) {
-    let half= head_dim / 2;
-    let mut cos_vals = vec![0.0f32; head_dim];
-    let mut sin_vals = vec![0.0f32; head_dim];
+pub fn compute_rope_freqs(half: usize, pos: usize, theta: f32) -> (Vecf32, Vecf32) {
+    let mut cos_vals = vec![0.0f32; half];
+    let mut sin_vals = vec![0.0f32; half];
 
     for i in 0..half {
-        let freq = 1.0 / theta.powf(2.0 * i as f32 / head_dim as f32);
+        let freq = 1.0 / theta.powf(i as f32 / half as f32);
         let angle = pos as f32 * freq;
         cos_vals[i] = angle.cos();
-        cos_vals[i + half] = cos_vals[i];
         sin_vals[i] = angle.sin();
-        sin_vals[i + half] = sin_vals[i];
     }
 
     (cos_vals, sin_vals)
@@ -26,12 +23,12 @@ pub struct ApplyRopeArgs<'a> {
     pub sin: &'a Arrf32,
     pub head_dim: usize,
     pub nope_dim: usize,
-    pub half: usize,
     pub interleaved: bool,
 }
 
 pub fn apply_rope<'a>(args: ApplyRopeArgs<'a>) -> &'a mut Vecf32 {
-    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved, half} = args;
+    let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved} = args;
+    let half = cos.len();
     for h in 0..num_heads {
         let offset = h * head_dim + nope_dim;
         apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin, interleaved});

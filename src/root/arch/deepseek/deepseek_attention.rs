@@ -56,13 +56,13 @@ struct ApplyMLARopeResult  {
 }
 
 fn apply_mla_rope(q_raw: &Vecf32, k_rope_shared: &Vecf32, config: &DeepseekConfig, qk_head_dim: usize, position: usize) -> ApplyMLARopeResult {
-    let (cos, sin) = compute_rope_freqs(config.qk_rope_head_dim, position, config.rope_theta);
+    let half = config.qk_rope_head_dim/2;
+    let (cos, sin) = compute_rope_freqs(half, position, config.rope_theta);
 
     let mut q = q_raw.clone();
 
-    let half = config.qk_rope_head_dim/2;
     apply_rope(ApplyRopeArgs {
-        out: &mut q, x: &q_raw, num_heads: config.num_attention_heads, cos: &cos, sin: &sin, head_dim: qk_head_dim, nope_dim: config.qk_nope_head_dim, interleaved: true, half
+        out: &mut q, x: &q_raw, num_heads: config.num_attention_heads, cos: &cos, sin: &sin, head_dim: qk_head_dim, nope_dim: config.qk_nope_head_dim, interleaved: true
     });
 
     let mut k_rope_roped = vec![0.0f32; config.qk_rope_head_dim];

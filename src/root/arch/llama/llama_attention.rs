@@ -62,16 +62,16 @@ fn compute_qkv(args: ComputeQKVArgs<'_>) -> ( Vecf32,  &PositionKVVectors, &Posi
     let mut v = matmul_transposed_f16(&normed, v_proj_w, kv_dim, &mut gpu);
     add_bias(&mut v, v_proj_b);
 
-    let (cos, sin) = compute_rope_freqs(head_dim, position, rope_theta);
+    let half = head_dim / 2;
+    let (cos, sin) = compute_rope_freqs(half, position, rope_theta);
 
     let mut q_roped = vec![0.0f32; q.len()];
     let q_num_heads = q.len() / head_dim;
-    let half = head_dim / 2;
-    apply_rope(ApplyRopeArgs { out: &mut q_roped, x: &q, num_heads: q_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false, half});
+    apply_rope(ApplyRopeArgs { out: &mut q_roped, x: &q, num_heads: q_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false});
 
     let mut k_roped = vec![0.0f32; k.len()];
     let k_num_heads = k.len() / head_dim;
-    apply_rope(ApplyRopeArgs { out: &mut k_roped, x: &k, num_heads: k_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false, half});
+    apply_rope(ApplyRopeArgs { out: &mut k_roped, x: &k, num_heads: k_num_heads, cos: &cos, sin: &sin, head_dim, nope_dim: 0, interleaved: false});
 
     kv_cache.append(layer_no, k_roped, v);
 
