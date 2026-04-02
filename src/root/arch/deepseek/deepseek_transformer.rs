@@ -70,13 +70,13 @@ pub fn deepseek_layer(args: DeepseekLayerArgs) {
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
         moe_ffn(MoeFFN {
-            hidden, normed: &normed2, router_w, experts, layer_no,
+            hidden, normed: &normed2, router_w, experts,
             num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size,
             hidden_size: config.hidden_size, gpu,
             norm_topk_prob: config.norm_topk_prob,
             routed_scaling_factor: config.routed_scaling_factor,
         });
-        deepseek_shared_experts(DeepseekSharedExpertsArgs {hidden, normed: &normed2, layer, config, gpu, layer_no});
+        deepseek_shared_experts(DeepseekSharedExpertsArgs {hidden, normed: &normed2, layer, config, gpu});
     } else {
         if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
             deepseek_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, gpu);
@@ -107,10 +107,9 @@ struct DeepseekSharedExpertsArgs<'a> {
     layer: &'a DeepseekLayer,
     config: &'a DeepseekConfig,
     gpu: &'a mut Gpu,
-    layer_no: usize
 }
 fn deepseek_shared_experts(args: DeepseekSharedExpertsArgs) {
-    let DeepseekSharedExpertsArgs {hidden, normed, layer, config, gpu, layer_no} = args;
+    let DeepseekSharedExpertsArgs {hidden, normed, layer, config, gpu} = args;
 
     if let (Some(gate_w), Some(up_w), Some(down_w)) = (&layer.shared_gate_proj_w, &layer.shared_up_proj_w, &layer.shared_down_proj_w) {
         let shared_intermediate = config.n_shared_experts * config.moe_intermediate_size;

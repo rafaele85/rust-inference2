@@ -34,7 +34,6 @@ pub struct MoeFFN<'a, TExpert: ExpertLike> {
     pub router_w: &'a Vecf32,
     pub experts: &'a Vec<TExpert>,
     pub gpu: &'a mut Gpu,
-    pub layer_no: usize,
     pub num_experts_per_tok: usize,
     pub moe_intermediate_size: usize,
     pub hidden_size: usize,
@@ -45,7 +44,7 @@ pub struct MoeFFN<'a, TExpert: ExpertLike> {
 pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
     let MoeFFN {
         mut hidden, normed, router_w, experts, gpu,
-        num_experts_per_tok, moe_intermediate_size, hidden_size, layer_no,
+        num_experts_per_tok, moe_intermediate_size, hidden_size,
         norm_topk_prob, routed_scaling_factor
     } = args;
     let num_experts = experts.len();

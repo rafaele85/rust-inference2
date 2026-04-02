@@ -51,7 +51,7 @@ pub fn llama_layer(args: LlamaLayerArgs) {
         moe_ffn(MoeFFN {
             hidden, normed: &normed2, router_w: &router_w, experts: &experts,
             num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size,
-            hidden_size: config.hidden_size, gpu, layer_no,
+            hidden_size: config.hidden_size, gpu,
             norm_topk_prob: false,
             routed_scaling_factor: 1.0,
         });
