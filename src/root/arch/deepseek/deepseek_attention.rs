@@ -28,6 +28,7 @@ fn kv_up_project(compressed_kv: &Vecf32, kv_a_layernorm_w: &Vecf32, kv_b_proj_w:
 }
 
 fn build_kv_for_caching(config: &DeepseekConfig, qk_head_dim: usize, kv_b: &Arrf32, k_rope_roped: &Arrf32) -> (Vecf32, Vecf32) {
+    assert_eq!(k_rope_roped.len(), config.qk_rope_head_dim, "k_rope_roped length mismatch");
     let mut full_k = vec![0.0f32; config.num_attention_heads * qk_head_dim];
     let mut full_v = vec![0.0f32; config.num_attention_heads * config.v_head_dim];
 
