@@ -28,10 +28,9 @@ pub struct ApplyRopeArgs<'a> {
 
 pub fn apply_rope<'a>(args: ApplyRopeArgs<'a>) -> &'a mut Vecf32 {
     let ApplyRopeArgs {out, x, num_heads, cos, sin, head_dim, nope_dim, interleaved} = args;
-    let half = cos.len();
     for h in 0..num_heads {
         let offset = h * head_dim + nope_dim;
-        apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, half, cos, sin, interleaved});
+        apply_rope_to_head(ApplyRopeToHeadArgs {out, x, offset, cos, sin, interleaved});
     }
 
     out
@@ -42,13 +41,13 @@ pub struct ApplyRopeToHeadArgs<'a> {
     pub x: &'a Arrf32,
     pub cos: &'a Arrf32,
     pub sin: &'a Arrf32,
-    pub half: usize,
     pub offset: usize,
     pub interleaved: bool,
 }
 
 pub fn apply_rope_to_head(args: ApplyRopeToHeadArgs) {
-    let ApplyRopeToHeadArgs {half, x, offset, cos, sin, out, interleaved} = args;
+    let ApplyRopeToHeadArgs {x, offset, cos, sin, out, interleaved} = args;
+    let half = cos.len();
     for i in 0..half {
         let (i1, i2) = if interleaved { (i * 2, i * 2 + 1) } else { (i, i + half) };
         let x1 = x[offset + i1];

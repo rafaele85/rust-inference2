@@ -66,7 +66,7 @@ fn apply_mla_rope(q_raw: &Vecf32, k_rope_shared: &Vecf32, config: &DeepseekConfi
     });
 
     let mut k_rope_roped = vec![0.0f32; config.qk_rope_head_dim];
-    apply_rope_to_head(ApplyRopeToHeadArgs {x: &k_rope_shared, out: &mut k_rope_roped, half, offset: 0, cos: &cos, sin: &sin, interleaved: true});
+    apply_rope_to_head(ApplyRopeToHeadArgs {x: &k_rope_shared, out: &mut k_rope_roped, offset: 0, cos: &cos, sin: &sin, interleaved: true});
 
     ApplyMLARopeResult {q, k_rope_roped}
 }
