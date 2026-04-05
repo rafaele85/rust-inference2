@@ -36,6 +36,25 @@ pub fn load_common_weights(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &
 
     CommonWeights {input_norm_w, post_norm_w, q_proj_w, o_proj_w, gate_proj_w, up_proj_w, down_proj_w, experts, expert_router_w}
 }
+
+
+
+pub fn load_shared_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
+    let key = format!("model.layers.{}.mlp.shared_experts.gate_proj.qweight", layer_no);
+    let key_bf16 = format!("model.layers.{}.mlp.shared_experts.gate_proj.weight", layer_no);
+
+    if safe_tensor.entries.contains_key(&key) || safe_tensor.entries.contains_key(&key_bf16) {
+        let gate = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.gate_proj", layer_no), &format!("shared_gate{}", layer_no));
+        let up = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.up_proj", layer_no), &format!("shared_up{}", layer_no));
+        let down = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.down_proj", layer_no), &format!("shared_down{}", layer_no));
+
+        return (Some(gate), Some(up), Some(down));
+    }
+
+    (None, None, None)
+}
+
+
 pub trait MLAKVLayer {
     fn get_kv_a_proj_w(&self) -> &WeightF16;
     fn get_kv_b_proj_w(&self) -> &WeightF16;

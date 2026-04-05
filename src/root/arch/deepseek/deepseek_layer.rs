@@ -4,7 +4,7 @@ use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
 use crate::root::config::{MLAConfig, NormConfig};
 use crate::root::gpu::Gpu;
-use crate::root::layer::{load_common_weights, CommonWeights, FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
+use crate::root::layer::{load_common_weights, load_shared_experts, CommonWeights, FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
 use crate::root::moe::StandardExpert;
 
 pub struct DeepseekLayer {
@@ -102,21 +102,6 @@ impl SharedExpertLayer for DeepseekLayer {
     }
 }
 
-
-fn load_shared_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
-    let key = format!("model.layers.{}.mlp.shared_experts.gate_proj.qweight", layer_no);
-    let key_bf16 = format!("model.layers.{}.mlp.shared_experts.gate_proj.weight", layer_no);
-
-    if safe_tensor.entries.contains_key(&key) || safe_tensor.entries.contains_key(&key_bf16) {
-        let gate = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.gate_proj", layer_no), &format!("shared_gate{}", layer_no));
-        let up = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.up_proj", layer_no), &format!("shared_up{}", layer_no));
-        let down = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight("mlp.shared_experts.down_proj", layer_no), &format!("shared_down{}", layer_no));
-
-        return (Some(gate), Some(up), Some(down));
-    }
-
-    (None, None, None)
-}
 
 impl LoadLayer for DeepseekLayer {
     fn load_layer(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Self {
