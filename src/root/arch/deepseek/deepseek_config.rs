@@ -2,6 +2,7 @@ use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs;
 use serde::Deserialize;
 use serde_json::from_str;
+use crate::root::config::{FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
 
 #[derive(Deserialize)]
 pub struct DeepseekConfig {
@@ -39,5 +40,67 @@ impl DeepseekConfig {
         let config: DeepseekConfig = from_str(&content).expect(&format!("Unable to deserialize file"));
 
         config
+    }
+}
+
+impl ModelDimConfig for DeepseekConfig {
+    fn get_hidden_size(&self) -> usize {
+        self.hidden_size
+    }
+}
+
+impl NormConfig for DeepseekConfig {
+    fn get_rms_norm_eps(&self) -> f32 {
+        self.rms_norm_eps
+    }
+}
+
+
+impl MLAConfig for DeepseekConfig{
+    fn get_num_attention_heads(&self) -> usize {
+        self.num_attention_heads
+    }
+    fn get_v_head_dim(&self) -> usize {
+        self.v_head_dim
+    }
+    fn get_rope_theta(&self) -> f32 {
+        self.rope_theta
+    }
+    fn get_kv_lora_rank(&self) -> usize {
+        self.kv_lora_rank
+    }
+    fn get_qk_rope_head_dim(&self) -> usize {
+        self.qk_rope_head_dim
+    }
+    fn get_qk_nope_head_dim(&self) -> usize {
+        self.qk_nope_head_dim
+    }
+}
+
+impl FFNConfig for DeepseekConfig {
+    fn get_intermediate_size(&self) -> usize {
+        self.intermediate_size
+    }
+}
+
+impl MoeConfig for DeepseekConfig {
+    fn get_norm_topk_prob(&self) -> bool {
+        self.norm_topk_prob
+    }
+
+    fn get_moe_intermediate_size(&self) -> usize {
+        self.moe_intermediate_size
+    }
+
+    fn get_num_experts_per_tok(&self) -> usize {
+        self.num_experts_per_tok
+    }
+
+    fn get_routed_scaling_factor(&self) -> f32 {
+        self.routed_scaling_factor
+    }
+
+    fn get_n_shared_experts(&self) -> usize {
+        self.n_shared_experts
     }
 }

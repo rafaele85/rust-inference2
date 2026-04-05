@@ -2,7 +2,7 @@ use crate::root::arch::common::LoadLayer;
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::layer::{load_common_weights, CommonWeights};
+use crate::root::layer::{load_common_weights, CommonWeights, FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
 use crate::root::moe::StandardExpert;
 
 pub struct DeepseekLayer {
@@ -27,6 +27,71 @@ pub struct DeepseekLayer {
     pub shared_up_proj_w: Option<WeightF16>,
     pub shared_down_proj_w: Option<WeightF16>,
 }
+
+impl FFNLayer for DeepseekLayer {
+    fn get_input_norm_w(&self) -> &Vecf32 {
+        &self.input_norm_w
+    }
+
+    fn get_post_norm_w(&self) -> &Vecf32 {
+        &self.post_norm_w
+    }
+
+    fn get_gate_proj_w(&self) -> &Option<WeightF16> {
+        &self.gate_proj_w
+    }
+
+    fn get_up_proj_w(&self) -> &Option<WeightF16> {
+        &self.up_proj_w
+    }
+
+    fn get_down_proj_w(&self) -> &Option<WeightF16> {
+        &self.down_proj_w
+    }
+}
+
+impl MOELayer for DeepseekLayer {
+    fn get_expert_router_w(&self) -> &Option<Vecf32> {
+        &self.expert_router_w
+    }
+
+    fn get_experts(&self) -> &Option<Vec<StandardExpert>> {
+        &self.experts
+    }
+}
+
+impl MLAKVLayer for DeepseekLayer {
+    fn get_kv_a_layernorm_w(&self) -> &Vecf32 {
+        &self.kv_a_layernorm_w
+    }
+
+    fn get_kv_a_proj_w(&self) -> &WeightF16 {
+        &self.kv_a_proj_w
+    }
+
+    fn get_kv_b_proj_w(&self) -> &WeightF16 {
+        &self.kv_b_proj_w
+    }
+
+    fn get_o_proj_w(&self) -> &WeightF16 {
+        &self.o_proj_w
+    }
+}
+
+impl SharedExpertLayer for DeepseekLayer {
+    fn get_shared_gate_proj_w(&self) -> &Option<WeightF16> {
+        &self.shared_gate_proj_w
+    }
+
+    fn get_shared_up_proj_w(&self) -> &Option<WeightF16> {
+        &self.shared_up_proj_w
+    }
+
+    fn get_shared_down_proj_w(&self) -> &Option<WeightF16> {
+        &self.shared_down_proj_w
+    }
+}
+
 
 fn load_shared_experts(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
     let key = format!("model.layers.{}.mlp.shared_experts.gate_proj.qweight", layer_no);

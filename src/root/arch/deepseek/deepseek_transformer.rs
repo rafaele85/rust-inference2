@@ -1,16 +1,8 @@
-use crate::root::activation::silu;
 use crate::root::arch::deepseek::deepseek::DeepseekModel;
-use crate::root::arch::deepseek::deepseek_attention::{mla_attention, MLAAttentionArgs};
-use crate::root::arch::deepseek::deepseek_config::DeepseekConfig;
-use crate::root::arch::deepseek::deepseek_layer::DeepseekLayer;
-use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::generate::{apply_layer, ApplyLayerArgs};
 use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
-use crate::root::linear::{add_to_vector, hadamard};
 use crate::root::logits::logits;
-use crate::root::matmul::matmul_transposed_f16;
-use crate::root::moe::{moe_ffn, MoeFFN};
-use crate::root::norm::rms_norm;
 
 pub struct DeepseekGenerateTokenArgs<'a> {
     pub token_id: usize,
@@ -31,7 +23,9 @@ pub fn deepseek_generate_token(args: DeepseekGenerateTokenArgs) -> usize {
 
     for i in 0..config.num_hidden_layers {
         let gpu = get_gpu(gpus, i, config.num_hidden_layers);
-        deepseek_layer(DeepseekLayerArgs {
+        let layer = &layers[i];
+        let q_raw_proj_w = &layer.q_proj_w;
+        apply_layer(ApplyLayerArgs {
             hidden: &mut hidden,
             layer: &layers[i],
             config,
@@ -39,6 +33,7 @@ pub fn deepseek_generate_token(args: DeepseekGenerateTokenArgs) -> usize {
             layer_no: i,
             position,
             gpu,
+            q_raw_proj_w
         });
     }
 
@@ -49,76 +44,3 @@ pub fn deepseek_generate_token(args: DeepseekGenerateTokenArgs) -> usize {
 }
 
 
-pub struct DeepseekLayerArgs<'a> {
-    pub hidden: &'a mut Vecf32,
-    pub layer: &'a DeepseekLayer,
-    pub config: &'a DeepseekConfig,
-    pub kv_cache: &'a mut KVCache,
-    pub layer_no: usize,
-    pub position: usize,
-    pub gpu: &'a mut Gpu,
-}
-
-
-pub fn deepseek_layer(args: DeepseekLayerArgs) {
-    let DeepseekLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden} = args;
-
-    let mut normed = rms_norm(hidden, &layer.input_norm_w, config.rms_norm_eps);
-
-    mla_attention(MLAAttentionArgs {config, gpu: &mut gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
-
-    if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
-        let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);
-        moe_ffn(MoeFFN {
-            hidden, normed: &normed2, router_w, experts,
-            num_experts_per_tok: config.num_experts_per_tok, moe_intermediate_size: config.moe_intermediate_size,
-            hidden_size: config.hidden_size, gpu,
-            norm_topk_prob: config.norm_topk_prob,
-            routed_scaling_factor: config.routed_scaling_factor,
-        });
-        deepseek_shared_experts(DeepseekSharedExpertsArgs {hidden, normed: &normed2, layer, config, gpu});
-    } else {
-        if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.gate_proj_w, &layer.up_proj_w, &layer.down_proj_w) {
-            deepseek_ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, gpu);
-        }
-    }
-}
-
-
-fn deepseek_ffn(hidden: &mut Vecf32, layer: &DeepseekLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &DeepseekConfig, gpu: &mut Gpu) {
-    let normed2 = rms_norm(&hidden, &layer.post_norm_w, config.rms_norm_eps);
-
-    let gate = matmul_transposed_f16(&normed2, &gate_proj_w, config.intermediate_size, gpu);
-
-    let up = matmul_transposed_f16(&normed2, &up_proj_w, config.intermediate_size, gpu);
-
-    let silu_gate = silu(&gate);
-
-    let ffn_act = hadamard(silu_gate, up, config.intermediate_size);
-
-    let ffn_out = matmul_transposed_f16(&ffn_act, &down_proj_w, config.hidden_size, gpu);
-
-    add_to_vector(hidden, &ffn_out);
-}
-
-struct DeepseekSharedExpertsArgs<'a> {
-    hidden: &'a mut Vecf32,
-    normed: &'a Vecf32,
-    layer: &'a DeepseekLayer,
-    config: &'a DeepseekConfig,
-    gpu: &'a mut Gpu,
-}
-fn deepseek_shared_experts(args: DeepseekSharedExpertsArgs) {
-    let DeepseekSharedExpertsArgs {hidden, normed, layer, config, gpu} = args;
-
-    if let (Some(gate_w), Some(up_w), Some(down_w)) = (&layer.shared_gate_proj_w, &layer.shared_up_proj_w, &layer.shared_down_proj_w) {
-        let shared_intermediate = config.n_shared_experts * config.moe_intermediate_size;
-        let gate = matmul_transposed_f16(normed, gate_w, shared_intermediate, gpu);
-        let silu_gate = silu(&gate);
-        let up = matmul_transposed_f16(normed, up_w, shared_intermediate, gpu);
-        let ffn_act = hadamard(silu_gate, up, shared_intermediate);
-        let ffn_out = matmul_transposed_f16(&ffn_act, down_w, config.hidden_size, gpu);
-
-        add_to_vector(hidden, &ffn_out);
-    }
-}

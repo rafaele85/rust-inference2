@@ -34,3 +34,27 @@ pub fn load_common_weights(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &
 
     CommonWeights {input_norm_w, post_norm_w, q_proj_w, o_proj_w, gate_proj_w, up_proj_w, down_proj_w, experts, expert_router_w}
 }
+pub trait MLAKVLayer {
+    fn get_kv_a_proj_w(&self) -> &WeightF16;
+    fn get_kv_b_proj_w(&self) -> &WeightF16;
+    fn get_kv_a_layernorm_w(&self) -> &Vecf32;
+    fn get_o_proj_w(&self) -> &WeightF16;
+}
+
+pub trait FFNLayer {
+    fn get_input_norm_w(&self) -> &Vecf32;
+    fn get_post_norm_w(&self) -> &Vecf32;
+    fn get_gate_proj_w(&self) -> &Option<WeightF16>;
+    fn get_up_proj_w(&self) -> &Option<WeightF16>;
+    fn get_down_proj_w(&self) -> &Option<WeightF16>;
+}
+
+pub trait MOELayer {
+    fn get_expert_router_w(&self) -> &Option<Vecf32>;
+    fn get_experts(&self) -> &Option<Vec<StandardExpert>>;
+}
+pub trait SharedExpertLayer {
+    fn get_shared_gate_proj_w(&self) -> &Option<WeightF16>;
+    fn get_shared_up_proj_w(&self) -> &Option<WeightF16>;
+    fn get_shared_down_proj_w(&self) -> &Option<WeightF16>;
+}

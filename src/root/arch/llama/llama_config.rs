@@ -2,7 +2,7 @@ use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs;
 use serde::{Deserialize, Deserializer};
 use serde_json::{from_str};
-
+use crate::root::config::{ModelDimConfig, MoeConfig};
 
 #[derive(Deserialize)]
 pub struct LlamaConfig {
@@ -46,3 +46,32 @@ impl LlamaConfig {
         config
     }
 }
+
+impl MoeConfig for LlamaConfig {
+    fn get_num_experts_per_tok(&self) -> usize {
+        self.num_experts_per_tok
+    }
+
+    fn get_moe_intermediate_size(&self) -> usize {
+        self.moe_intermediate_size
+    }
+
+    fn get_norm_topk_prob(&self) -> bool {
+        false
+    }
+
+    fn get_routed_scaling_factor(&self) -> f32 {
+        1.0
+    }
+
+    fn get_n_shared_experts(&self) -> usize {
+        0
+    }
+}
+
+impl ModelDimConfig for LlamaConfig {
+    fn get_hidden_size(&self) -> usize {
+        self.hidden_size
+    }    
+}
+

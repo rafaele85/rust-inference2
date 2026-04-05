@@ -1,5 +1,14 @@
+use crate::root::activation::silu;
+use crate::root::attention::{mla_attention, MLAAttentionArgs};
+use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::config::{FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::KVCache;
+use crate::root::layer::{FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
+use crate::root::linear::{add_to_vector, hadamard};
+use crate::root::matmul::matmul_transposed_f16;
+use crate::root::moe::{moe_ffn, MoeFFN};
+use crate::root::norm::rms_norm;
 use crate::root::tokenizer::BpeTokenizer;
 
 pub struct GenerateNextTokenArgs<'a> {
@@ -66,4 +75,87 @@ pub fn generate(args: GenerateArgs, model: &impl Model) -> String {
     let res = tokenizer.decode(&all_ids);
 
     res
+}
+
+
+pub struct ApplyLayerArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig> {
+    pub hidden: &'a mut Vecf32,
+    pub layer: &'a TLayer,
+    pub config: &'a TConfig,
+    pub kv_cache: &'a mut KVCache,
+    pub layer_no: usize,
+    pub position: usize,
+    pub gpu: &'a mut Gpu,
+    pub q_raw_proj_w: &'a WeightF16,
+}
+
+pub fn apply_layer<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MLAConfig + MoeConfig + FFNConfig>(
+    args: ApplyLayerArgs<TLayer, TConfig>
+) {
+    let ApplyLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden, q_raw_proj_w} = args;
+
+    let normed = rms_norm(hidden, layer.get_input_norm_w(), config.get_rms_norm_eps());
+
+    mla_attention(MLAAttentionArgs {
+        gpu: &mut gpu, hidden, kv_cache, layer_no, position, normed: &normed,
+        q_raw_normed: &normed,
+        q_raw_proj_w,
+        layer,
+        config
+    });
+
+    if let (Some(router_w), Some(experts)) = (&layer.get_expert_router_w(), &layer.get_experts()) {
+        let normed2 = rms_norm(hidden, &layer.get_post_norm_w(), config.get_rms_norm_eps());
+        moe_ffn(MoeFFN {
+            hidden, normed: &normed2, router_w, experts, config,
+            gpu,
+        });
+        shared_experts(SharedExpertsArgs {hidden, normed: &normed2, layer, config, gpu});
+    } else {
+        if let (Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w)) = (&layer.get_gate_proj_w(), &layer.get_up_proj_w(), &layer.get_down_proj_w()) {
+            ffn(hidden, layer, gate_proj_w, up_proj_w, down_proj_w, config, gpu);
+        }
+    }
+}
+
+
+
+fn ffn<TLayer: FFNLayer, TConfig: MoeConfig + FFNConfig + NormConfig + MLAConfig + ModelDimConfig>(
+    hidden: &mut Vecf32, layer: &TLayer, gate_proj_w: &WeightF16, up_proj_w: &WeightF16, down_proj_w: &WeightF16, config: &TConfig, gpu: &mut Gpu
+) {
+    let normed2 = rms_norm(&hidden, &layer.get_post_norm_w(), config.get_rms_norm_eps());
+
+    let gate = matmul_transposed_f16(&normed2, &gate_proj_w, config.get_intermediate_size(), gpu);
+
+    let up = matmul_transposed_f16(&normed2, &up_proj_w, config.get_intermediate_size(), gpu);
+
+    let silu_gate = silu(&gate);
+
+    let ffn_act = hadamard(silu_gate, up, config.get_intermediate_size());
+
+    let ffn_out = matmul_transposed_f16(&ffn_act, &down_proj_w, config.get_hidden_size(), gpu);
+
+    add_to_vector(hidden, &ffn_out);
+}
+
+struct SharedExpertsArgs<'a, TLayer: SharedExpertLayer, TConfig: MoeConfig + ModelDimConfig> {
+    hidden: &'a mut Vecf32,
+    normed: &'a Vecf32,
+    layer: &'a TLayer,
+    config: &'a TConfig,
+    gpu: &'a mut Gpu,
+}
+fn shared_experts<TLayer: SharedExpertLayer, TConfig: MoeConfig + ModelDimConfig>(args: SharedExpertsArgs<TLayer, TConfig>) {
+    let SharedExpertsArgs {hidden, normed, layer, config, gpu} = args;
+
+    if let (Some(gate_w), Some(up_w), Some(down_w)) = (&layer.get_shared_gate_proj_w(), &layer.get_shared_up_proj_w(), &layer.get_shared_down_proj_w()) {
+        let shared_intermediate = config.get_n_shared_experts() * config.get_moe_intermediate_size();
+        let gate = matmul_transposed_f16(normed, gate_w, shared_intermediate, gpu);
+        let silu_gate = silu(&gate);
+        let up = matmul_transposed_f16(normed, up_w, shared_intermediate, gpu);
+        let ffn_act = hadamard(silu_gate, up, shared_intermediate);
+        let ffn_out = matmul_transposed_f16(&ffn_act, down_w, config.get_hidden_size(), gpu);
+
+        add_to_vector(hidden, &ffn_out);
+    }
 }

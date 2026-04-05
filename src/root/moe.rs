@@ -3,6 +3,7 @@ use half::f16;
 use crate::root::activation::{silu, softmax};
 use crate::root::arch::safetensors::{load_tensor_awq, SafeTensor};
 use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
+use crate::root::config::{ModelDimConfig, MoeConfig};
 use crate::root::gpu::Gpu;
 use crate::root::linear::{add_to_vector, hadamard, scale_and_add, ScaleAndAddArgs};
 use crate::root::matmul::matmul_transposed_f16;
@@ -28,33 +29,27 @@ impl ExpertLike for StandardExpert {
 }
 
 
-pub struct MoeFFN<'a, TExpert: ExpertLike> {
+pub struct MoeFFN<'a, TExpert: ExpertLike, TConfig: MoeConfig + ModelDimConfig> {
     pub hidden: &'a mut Vecf32,
     pub normed: &'a Vecf32,
     pub router_w: &'a Vecf32,
     pub experts: &'a Vec<TExpert>,
     pub gpu: &'a mut Gpu,
-    pub num_experts_per_tok: usize,
-    pub moe_intermediate_size: usize,
-    pub hidden_size: usize,
-    pub norm_topk_prob: bool,
-    pub routed_scaling_factor: f32,
+    pub config: &'a TConfig,
 }
 
-pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
+pub fn moe_ffn<TExpert: ExpertLike, TConfig: MoeConfig + ModelDimConfig>(args: MoeFFN<TExpert, TConfig>) {
     let MoeFFN {
-        mut hidden, normed, router_w, experts, gpu,
-        num_experts_per_tok, moe_intermediate_size, hidden_size,
-        norm_topk_prob, routed_scaling_factor
+        mut hidden, normed, router_w, experts, gpu, config
     } = args;
     let num_experts = experts.len();
 
-    let scores = compute_scores(normed, router_w, hidden_size, num_experts);
+    let scores = compute_scores(normed, router_w, config.get_hidden_size(), num_experts);
 
     let all_probs = softmax(&scores);
-    let (mut top_probs, top_indices) = get_top_scores(&all_probs, num_experts, num_experts_per_tok);
+    let (mut top_probs, top_indices) = get_top_scores(&all_probs, num_experts, config.get_num_experts_per_tok());
 
-    if norm_topk_prob {
+    if config.get_norm_topk_prob() {
         let sum: f32 = top_probs.iter().sum();
         if sum > 0.0 {
             for p in top_probs.iter_mut() {
@@ -64,11 +59,11 @@ pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
     }
 
     let moe_out = apply_experts(ApplyExpertsArgs {
-        top_indices: &top_indices, gpu, hidden_size, experts, normed, moe_intermediate_size, expert_probs : &top_probs
+        top_indices: &top_indices, gpu, experts, normed, expert_probs : &top_probs, config
     });
 
-    if routed_scaling_factor != 1.0 {
-        let scaled: Vecf32 = moe_out.iter().map(|&x| x * routed_scaling_factor).collect();
+    if config.get_routed_scaling_factor() != 1.0 {
+        let scaled: Vecf32 = moe_out.iter().map(|&x| x * config.get_routed_scaling_factor()).collect();
         add_to_vector(&mut hidden, &scaled);
     } else {
         add_to_vector(&mut hidden, &moe_out);
@@ -79,24 +74,23 @@ pub fn moe_ffn<TExpert: ExpertLike>(args: MoeFFN<TExpert>) {
 
 
 
-struct ApplyExpertsArgs<'a, TExpert: ExpertLike> {
+struct ApplyExpertsArgs<'a, TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig> {
     normed: &'a Vecf32,
-    hidden_size: usize,
     top_indices: &'a Vec<usize>,
     experts: &'a Vec<TExpert>,
-    moe_intermediate_size: usize,
     gpu: &'a mut Gpu,
     expert_probs : &'a Vecf32,
+    config: &'a TConfig,
 }
 
-fn apply_experts<TExpert: ExpertLike>(args: ApplyExpertsArgs<TExpert>) -> Vecf32 {
-    let ApplyExpertsArgs {hidden_size, top_indices, experts, normed, moe_intermediate_size, gpu, expert_probs} = args;
-    let mut moe_out = vec![0.0f32; hidden_size];
+fn apply_experts<TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig>(args: ApplyExpertsArgs<TExpert, TConfig>) -> Vecf32 {
+    let ApplyExpertsArgs {top_indices, experts, normed, config, gpu, expert_probs} = args;
+    let mut moe_out = vec![0.0f32; config.get_hidden_size()];
 
     for (k, &expert_idx) in top_indices.iter().enumerate() {
         let expert = &experts[expert_idx];
         let w = expert_probs[k];
-        apply_expert(ApplyExpertArgs {normed, hidden_size, w, moe_intermediate_size, moe_out: &mut moe_out, expert, gpu});
+        apply_expert(ApplyExpertArgs {normed, w, config, moe_out: &mut moe_out, expert, gpu});
     }
 
     moe_out
@@ -104,29 +98,28 @@ fn apply_experts<TExpert: ExpertLike>(args: ApplyExpertsArgs<TExpert>) -> Vecf32
 
 
 
-struct ApplyExpertArgs<'a, TExpert: ExpertLike> {
+struct ApplyExpertArgs<'a, TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig> {
     normed: &'a Vecf32,
-    hidden_size: usize,
     expert: &'a TExpert,
-    moe_intermediate_size: usize,
     w: f32,
     gpu: &'a mut Gpu,
     moe_out: &'a mut Vecf32,
+    config: &'a TConfig,
 }
 
-fn apply_expert<TExpert: ExpertLike>(args: ApplyExpertArgs<TExpert>) {
-    let ApplyExpertArgs {normed, expert, moe_intermediate_size,  gpu, hidden_size, w, mut moe_out} = args;
+fn apply_expert<TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig>(args: ApplyExpertArgs<TExpert, TConfig>) {
+    let ApplyExpertArgs {normed, expert, gpu, w, mut moe_out, config} = args;
     let gate_proj_w = &expert.gate_proj_w();
     let up_proj_w = &expert.up_proj_w();
     let down_proj_w = &expert.down_proj_w();
 
-    let gate = matmul_transposed_f16(normed, &gate_proj_w, moe_intermediate_size, gpu);
-    let up = matmul_transposed_f16(normed, &up_proj_w, moe_intermediate_size, gpu);
+    let gate = matmul_transposed_f16(normed, &gate_proj_w, config.get_moe_intermediate_size(), gpu);
+    let up = matmul_transposed_f16(normed, &up_proj_w, config.get_moe_intermediate_size(), gpu);
     let silu_gate = silu(&gate);
-    let ffn_act = hadamard(silu_gate, up, moe_intermediate_size);
+    let ffn_act = hadamard(silu_gate, up, config.get_moe_intermediate_size());
 
-    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, hidden_size, gpu);
-    scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out, start_offset: 0, num_iterations: hidden_size});
+    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, config.get_hidden_size(), gpu);
+    scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out, start_offset: 0, num_iterations: config.get_hidden_size()});
 }
 
 
