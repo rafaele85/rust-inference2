@@ -3,7 +3,7 @@ use crate::root::arch::llama::llama_load_weight::{llama_load_bias};
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::load_layer::{load_common_weights, CommonWeights};
+use crate::root::layer::{load_common_weights, CommonWeights};
 use crate::root::moe::StandardExpert;
 
 pub struct LlamaLayer {
