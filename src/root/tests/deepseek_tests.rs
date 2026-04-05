@@ -1,8 +1,9 @@
 use crate::root::arch::deepseek::deepseek::DeepseekModel;
 use crate::root::arch::safetensors::{resolve_hf_path, SafeTensor};
-use crate::root::generate::{generate, GenerateArgs, GenerateNextTokenArgs, Model};
+use crate::root::generate::{generate, GenerateArgs, GenerateNextTokenArgs};
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::KVCache;
+use crate::root::model::GenerateNextToken;
 use crate::root::tokenizer::BpeTokenizer;
 
 pub fn deepseek_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {

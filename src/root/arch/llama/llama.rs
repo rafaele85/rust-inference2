@@ -4,8 +4,9 @@ use crate::root::arch::llama::llama_layer::LlamaLayer;
 use crate::root::arch::llama::llama_transformer::{llama_generate_token, LlamaGenerateTokenArgs};
 use crate::root::arch::safetensors::{load_tensor_to_f32, SafeTensor};
 use crate::root::common_types::{Vecf32, WeightF16};
-use crate::root::generate::{GenerateNextTokenArgs, Model};
+use crate::root::generate::{GenerateNextTokenArgs};
 use crate::root::gpu::{get_default_gpu, Gpu};
+use crate::root::model::{GenerateNextToken, Model};
 
 pub struct LlamaModel {
     pub layers: Vec<LlamaLayer>,
@@ -36,11 +37,25 @@ impl LlamaModel {
     }
 }
 
-
-impl Model for LlamaModel {
+impl GenerateNextToken for LlamaModel {
     fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
         let GenerateNextTokenArgs { token_id, position, kv_cache, gpus} = args;
         let res = llama_generate_token(LlamaGenerateTokenArgs {token_id, position, kv_cache, gpus, model: self});
         res
+    }
+
+}
+
+impl Model for LlamaModel {
+    fn get_embed_weights(&self) -> &Vecf32 {
+        &self.embed_weights
+    }
+
+    fn get_final_norm_w(&self) -> &Vecf32 {
+        &self.final_norm_w
+    }
+
+    fn get_lm_head_w(&self) -> &WeightF16 {
+        &self.lm_head_w
     }
 }

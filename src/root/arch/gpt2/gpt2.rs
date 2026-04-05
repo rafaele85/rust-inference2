@@ -4,8 +4,9 @@ use crate::root::arch::gpt2::gpt2_layer::GPT2Layer;
 use crate::root::arch::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
 use crate::root::arch::safetensors::{load_tensor_f32, SafeTensor};
 use crate::root::common_types::{Vecf32, Weight};
-use crate::root::generate::{GenerateNextTokenArgs, Model};
+use crate::root::generate::{GenerateNextTokenArgs};
 use crate::root::gpu::Gpu;
+use crate::root::model::GenerateNextToken;
 
 pub struct GPT2Model {
     pub wte: Vecf32,
@@ -32,7 +33,7 @@ impl GPT2Model {
     }
 }
 
-impl Model for GPT2Model {
+impl GenerateNextToken for GPT2Model {
     fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
         let GenerateNextTokenArgs { token_id, position, kv_cache, gpus} = args;
         let res = gpt2_generate_token(GPT2GenerateTokenArgs {token_id, position, kv_cache, gpus, model: self});

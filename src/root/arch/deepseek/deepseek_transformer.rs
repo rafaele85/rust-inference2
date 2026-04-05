@@ -23,8 +23,6 @@ pub fn deepseek_generate_token(args: DeepseekGenerateTokenArgs) -> usize {
 
     for i in 0..config.num_hidden_layers {
         let gpu = get_gpu(gpus, i, config.num_hidden_layers);
-        let layer = &layers[i];
-        let q_raw_proj_w = &layer.q_proj_w;
         apply_layer(ApplyLayerArgs {
             hidden: &mut hidden,
             layer: &layers[i],
@@ -33,7 +31,6 @@ pub fn deepseek_generate_token(args: DeepseekGenerateTokenArgs) -> usize {
             layer_no: i,
             position,
             gpu,
-            q_raw_proj_w
         });
     }
 

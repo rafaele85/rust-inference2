@@ -2,11 +2,13 @@ use crate::root::activation::silu;
 use crate::root::attention::{mla_attention, MLAAttentionArgs};
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::config::{FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
-use crate::root::gpu::Gpu;
+use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
 use crate::root::layer::{FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
 use crate::root::linear::{add_to_vector, hadamard};
+use crate::root::logits::logits;
 use crate::root::matmul::matmul_transposed_f16;
+use crate::root::model::{GenerateNextToken, Model};
 use crate::root::moe::{moe_ffn, MoeFFN};
 use crate::root::norm::rms_norm;
 use crate::root::tokenizer::BpeTokenizer;
@@ -15,13 +17,9 @@ pub struct GenerateNextTokenArgs<'a> {
     pub token_id: usize,
     pub position: usize,
     pub kv_cache: &'a mut KVCache,
-    pub gpus: &'a mut Vec<Gpu>
+    pub gpus: &'a mut Vec<Gpu>,
 }
-pub trait Model {
-    fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize;
-}
-
-fn initial_fill(input_ids: &Vec<u32>, model: &impl Model, kv_cache: &mut KVCache, gpus: &mut Vec<Gpu>) -> u32 {
+fn initial_fill<TM: GenerateNextToken>(input_ids: &Vec<u32>, model: &TM, kv_cache: &mut KVCache, gpus: &mut Vec<Gpu>) -> u32 {
     let mut last_generated = 0;
 
     for i in 0..input_ids.len() {
@@ -32,7 +30,7 @@ fn initial_fill(input_ids: &Vec<u32>, model: &impl Model, kv_cache: &mut KVCache
     last_generated as u32
 }
 
-fn generate_single_pass(all_ids: &mut Vec<u32>, model: &impl Model, eos_token_id: &Vec<u32>, kv_cache: &mut KVCache, gpus: &mut Vec<Gpu>) -> bool {
+fn generate_single_pass<TM: GenerateNextToken>(all_ids: &mut Vec<u32>, model: &TM, eos_token_id: &Vec<u32>, kv_cache: &mut KVCache, gpus: &mut Vec<Gpu>) -> bool {
     let last_id = *all_ids.last().unwrap();
     if eos_token_id.contains(&last_id)  {
         return true;
@@ -53,7 +51,7 @@ pub struct GenerateArgs<'a> {
     pub num_layers: usize,
 }
 
-pub fn generate(args: GenerateArgs, model: &impl Model) -> String {
+pub fn generate<TM: GenerateNextToken>(args: GenerateArgs, model: &TM) -> String {
     let GenerateArgs {prompt, tokenizer, max_tokens, gpus, eos_token_id, num_layers} = args;
 
     let mut kv_cache = KVCache::new(num_layers);
@@ -86,22 +84,19 @@ pub struct ApplyLayerArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer, T
     pub layer_no: usize,
     pub position: usize,
     pub gpu: &'a mut Gpu,
-    pub q_raw_proj_w: &'a WeightF16,
 }
 
 pub fn apply_layer<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MLAConfig + MoeConfig + FFNConfig>(
     args: ApplyLayerArgs<TLayer, TConfig>
 ) {
-    let ApplyLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden, q_raw_proj_w} = args;
+    let ApplyLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden} = args;
 
     let normed = rms_norm(hidden, layer.get_input_norm_w(), config.get_rms_norm_eps());
 
     mla_attention(MLAAttentionArgs {
         gpu: &mut gpu, hidden, kv_cache, layer_no, position, normed: &normed,
-        q_raw_normed: &normed,
-        q_raw_proj_w,
         layer,
-        config
+        config,
     });
 
     if let (Some(router_w), Some(experts)) = (&layer.get_expert_router_w(), &layer.get_experts()) {
@@ -159,3 +154,45 @@ fn shared_experts<TLayer: SharedExpertLayer, TConfig: MoeConfig + ModelDimConfig
         add_to_vector(hidden, &ffn_out);
     }
 }
+
+
+pub struct GenerateTokenArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig, TM: Model> {
+    pub token_id: usize,
+    pub position: usize,
+    pub config: &'a TConfig,
+    pub layers: &'a Vec<TLayer>,
+    pub kv_cache: &'a mut KVCache,
+    pub gpus: &'a mut Vec<Gpu>,
+    pub model: &'a TM,
+}
+
+pub fn generate_token<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig, TM: Model>(
+    args: GenerateTokenArgs<TLayer, TConfig, TM>
+) -> usize {
+    let GenerateTokenArgs {token_id, position, model, config, layers, kv_cache, mut gpus} = args;
+    let token_start = token_id * config.get_hidden_size();
+
+    let embed_token = &model.get_embed_weights()[token_start..token_start + config.get_hidden_size()];
+
+    let mut hidden = embed_token.to_vec();
+
+    for i in 0..config.get_num_hidden_layers() {
+        let gpu = get_gpu(gpus, i, config.get_num_hidden_layers());
+        apply_layer(ApplyLayerArgs {
+            hidden: &mut hidden,
+            layer: &layers[i],
+            config,
+            kv_cache,
+            layer_no: i,
+            position,
+            gpu,
+        });
+    }
+
+    let default_gpu = get_default_gpu(&mut gpus, "logits");
+    let output_token_id = logits(hidden, model.get_final_norm_w(), model.get_lm_head_w(), config.get_vocab_size(), config.get_rms_norm_eps(), default_gpu);
+
+    output_token_id
+}
+
+

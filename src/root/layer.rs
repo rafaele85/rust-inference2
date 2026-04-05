@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use crate::root::arch::safetensors::SafeTensor;
-use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
+use crate::root::config::{MLAConfig, NormConfig};
 use crate::root::gpu::Gpu;
 use crate::root::moe::{load_experts_awq, load_experts_bf16, StandardExpert};
 
@@ -39,6 +41,9 @@ pub trait MLAKVLayer {
     fn get_kv_b_proj_w(&self) -> &WeightF16;
     fn get_kv_a_layernorm_w(&self) -> &Vecf32;
     fn get_o_proj_w(&self) -> &WeightF16;
+    fn compute_q_raw_normed<'a, TC: NormConfig + MLAConfig>(&'a self, normed: &'a Vecf32, config: &TC, gpu: &mut Gpu) -> Cow<'a, Arrf32>;
+
+    fn get_q_raw_proj_w(&self) -> &WeightF16;
 }
 
 pub trait FFNLayer {

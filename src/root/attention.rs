@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::root::activation::softmax;
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
 use crate::root::config::{MLAConfig, ModelDimConfig, NormConfig};
@@ -140,13 +141,11 @@ fn mla_attention_scores(args: MLAAttentionScoresArgs) -> Vecf32 {
 }
 
 
-fn q_project(normed: &Vecf32, q_proj_w: &WeightF16, q_total: usize, gpu: &mut Gpu) -> Vecf32 {
+fn q_project(normed: &Cow<Arrf32>, q_proj_w: &WeightF16, q_total: usize, gpu: &mut Gpu) -> Vecf32 {
     let res = matmul_transposed_f16(normed, q_proj_w, q_total, gpu);
 
     res
 }
-
-
 
 pub struct MLAAttentionArgs<'a, TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig> {
     pub hidden: &'a mut Vecf32,
@@ -156,22 +155,20 @@ pub struct MLAAttentionArgs<'a, TLayer: MLAKVLayer, TConfig: NormConfig + ModelD
     pub layer_no: usize,
     pub position: usize,
     pub gpu: &'a mut Gpu,
-    pub q_raw_normed: &'a Vecf32,
-    pub q_raw_proj_w: &'a WeightF16,
     pub config: &'a TConfig,
 }
 pub fn mla_attention<TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig>(args: MLAAttentionArgs<TLayer, TConfig>) {  // reuse same args struct
     let MLAAttentionArgs {hidden, normed,
         layer,
         config,
-        q_raw_normed, q_raw_proj_w,
         kv_cache, layer_no, position, gpu} = args;
 
     let kv_a_total = config.get_kv_lora_rank() + config.get_qk_rope_head_dim();
     let kv_b_total = config.get_num_attention_heads() * (config.get_qk_nope_head_dim() + config.get_v_head_dim());
     let qk_head_dim = config.get_qk_nope_head_dim() + config.get_qk_rope_head_dim();
     let q_total = config.get_num_attention_heads() * qk_head_dim;
-
+    let q_raw_normed = layer.compute_q_raw_normed(&normed, config, gpu);
+    let q_raw_proj_w = layer.get_q_raw_proj_w();
     let q_raw = q_project(&q_raw_normed, &q_raw_proj_w, q_total, gpu);
 
     let (compressed_kv, k_rope_shared) = kv_down_project(normed, layer.get_kv_a_proj_w(), kv_a_total, config.get_kv_lora_rank(), gpu);

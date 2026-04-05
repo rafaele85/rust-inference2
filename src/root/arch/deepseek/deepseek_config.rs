@@ -47,6 +47,12 @@ impl ModelDimConfig for DeepseekConfig {
     fn get_hidden_size(&self) -> usize {
         self.hidden_size
     }
+    fn get_num_hidden_layers(&self) -> usize {
+        self.num_hidden_layers
+    }
+    fn get_vocab_size(&self) -> usize {
+        self.vocab_size
+    }
 }
 
 impl NormConfig for DeepseekConfig {

@@ -1,6 +1,6 @@
 use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize};
 use serde_json::{from_str};
 use crate::root::config::{ModelDimConfig, MoeConfig};
 
@@ -72,6 +72,12 @@ impl MoeConfig for LlamaConfig {
 impl ModelDimConfig for LlamaConfig {
     fn get_hidden_size(&self) -> usize {
         self.hidden_size
-    }    
+    }
+    fn get_num_hidden_layers(&self) -> usize {
+        self.num_hidden_layers
+    }
+    fn get_vocab_size(&self) -> usize {
+        self.vocab_size
+    }
 }
 

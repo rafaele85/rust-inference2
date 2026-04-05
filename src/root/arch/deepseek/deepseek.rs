@@ -3,9 +3,10 @@ use crate::root::arch::deepseek::deepseek_config::DeepseekConfig;
 use crate::root::arch::deepseek::deepseek_layer::DeepseekLayer;
 use crate::root::arch::deepseek::deepseek_transformer::{deepseek_generate_token, DeepseekGenerateTokenArgs};
 use crate::root::arch::safetensors::{load_tensor_to_f32, SafeTensor};
-use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
-use crate::root::generate::{GenerateNextTokenArgs, Model};
+use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::generate::{GenerateNextTokenArgs};
 use crate::root::gpu::{get_default_gpu, Gpu};
+use crate::root::model::{GenerateNextToken, Model};
 
 pub struct DeepseekModel {
     pub layers: Vec<DeepseekLayer>,
@@ -39,11 +40,25 @@ impl DeepseekModel {
 }
 
 
-
-impl Model for DeepseekModel {
+impl GenerateNextToken for DeepseekModel {
     fn generate_next_token(&self, args: GenerateNextTokenArgs) -> usize {
         let GenerateNextTokenArgs { token_id, position, kv_cache, gpus} = args;
         let res = deepseek_generate_token(DeepseekGenerateTokenArgs {token_id, position, kv_cache, gpus, model: self});
         res
     }
 }
+
+impl Model for DeepseekModel {
+    fn get_embed_weights(&self) -> &Vecf32 {
+        &self.embed_weights
+    }
+
+    fn get_final_norm_w(&self) -> &Vecf32 {
+        &self.final_norm_w
+    }
+
+    fn get_lm_head_w(&self) -> &WeightF16 {
+        &self.lm_head_w
+    }
+}
+

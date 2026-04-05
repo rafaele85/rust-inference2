@@ -13,6 +13,8 @@ pub trait NormConfig {
 
 pub trait ModelDimConfig {
     fn get_hidden_size(&self) -> usize;
+    fn get_num_hidden_layers(&self) -> usize;
+    fn get_vocab_size(&self) -> usize;
 }
 
 
