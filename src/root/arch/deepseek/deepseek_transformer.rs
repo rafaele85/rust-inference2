@@ -1,6 +1,6 @@
 use crate::root::activation::silu;
 use crate::root::arch::deepseek::deepseek::DeepseekModel;
-use crate::root::arch::deepseek::deepseek_attention::{deepseek_mla_attention, DeepseekMLAAttentionArgs};
+use crate::root::arch::deepseek::deepseek_attention::{mla_attention, MLAAttentionArgs};
 use crate::root::arch::deepseek::deepseek_config::DeepseekConfig;
 use crate::root::arch::deepseek::deepseek_layer::DeepseekLayer;
 use crate::root::common_types::{Vecf32, WeightF16};
@@ -65,7 +65,7 @@ pub fn deepseek_layer(args: DeepseekLayerArgs) {
 
     let mut normed = rms_norm(hidden, &layer.input_norm_w, config.rms_norm_eps);
 
-    deepseek_mla_attention(DeepseekMLAAttentionArgs {config, gpu: &mut gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
+    mla_attention(MLAAttentionArgs {config, gpu: &mut gpu, layer, hidden, kv_cache, layer_no, position, normed: &mut normed});
 
     if let (Some(router_w), Some(experts)) = (&layer.expert_router_w, &layer.experts) {
         let normed2 = rms_norm(hidden, &layer.post_norm_w, config.rms_norm_eps);

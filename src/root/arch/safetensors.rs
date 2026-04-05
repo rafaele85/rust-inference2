@@ -7,6 +7,7 @@ use half::f16;
 use memmap2::Mmap;
 use serde_json::{Map, Value};
 use crate::root::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs, AWQ_PACK_SIZE};
+use crate::root::arch::quant::compressed_tensors::ct_dequantize;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
 
@@ -116,14 +117,28 @@ impl SafeTensor {
     pub fn load_layer_weight(&mut self, name: &str, layer: usize) -> Vecf32 {
         let prefix = format!("model.layers.{}", layer);
         let bf16_key = format!("{}.{}.weight", prefix, name);
+        let packed_key = format!("{}.{}.weight_packed", prefix, name);
+        let scale_key = format!("{}.{}.weight_scale", prefix, name);
+        let shape_key = format!("{}.{}.weight_shape", prefix, name);
         let awq_key = format!("{}.{}.qweight", prefix, name);
 
         if self.entries.contains_key(&bf16_key) {
+            // Layer 0: regular bfloat16
             load_tensor_to_f32(self, &bf16_key)
+        } else if self.entries.contains_key(&packed_key) {
+            // Layers 1+: AWQ packed format
+            let packed = load_tensor_i32(self, &packed_key);
+            let scales = load_tensor_f32(self, &scale_key); // or f16 then convert
+            let shape = load_tensor_i32(self, &shape_key);  // [out_dim, in_dim]
+
+            let out_dim = shape[0] as usize;
+            let in_dim = shape[1] as usize;
+
+            ct_dequantize(&packed, &scales, out_dim, in_dim)
         } else if self.entries.contains_key(&awq_key) {
             load_tensor_awq(self, &format!("{}.{}", prefix, name))
         } else {
-            panic!("Not found weight or qweight for {}.{}", prefix, name)
+            panic!("Not found weight for {}.{}", prefix, name)
         }
     }
 

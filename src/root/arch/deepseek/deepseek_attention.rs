@@ -87,7 +87,7 @@ fn mla_attention_scores(q: &Vecf32, k_cache: &PositionKVVectors, v_cache: &Posit
     attn_out
 }
 
-pub struct DeepseekMLAAttentionArgs<'a> {
+pub struct MLAAttentionArgs<'a> {
     pub hidden: &'a mut Vecf32,
     pub normed: &'a mut Vecf32,
     pub layer: &'a DeepseekLayer,
@@ -97,14 +97,14 @@ pub struct DeepseekMLAAttentionArgs<'a> {
     pub position: usize,
     pub gpu: &'a mut Gpu,
 }
-pub fn deepseek_mla_attention(args: DeepseekMLAAttentionArgs) {
-    let DeepseekMLAAttentionArgs {hidden, normed, layer, config, kv_cache, layer_no, position, gpu} = args;
+pub fn mla_attention(args: MLAAttentionArgs) {
+    let MLAAttentionArgs {hidden, normed, layer, config, kv_cache, layer_no, position, gpu} = args;
     let DeepseekLayer {q_proj_w, kv_a_proj_w, kv_a_layernorm_w, kv_b_proj_w, ..} = layer;
     let qk_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim;
-    let q_total = config.num_attention_heads * qk_head_dim;
     let kv_a_total = config.kv_lora_rank + config.qk_rope_head_dim;
     let kv_b_total = config.num_attention_heads * (config.qk_nope_head_dim + config.v_head_dim);
 
+    let q_total = config.num_attention_heads * qk_head_dim;
     let q_raw = q_project(normed, q_proj_w, q_total, gpu);
     let (compressed_kv, k_rope_shared) = kv_down_project(normed, kv_a_proj_w, kv_a_total, config.kv_lora_rank, gpu);
 
