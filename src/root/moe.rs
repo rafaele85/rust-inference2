@@ -273,6 +273,9 @@ fn load_experts_raw_data_ct(safe_tensor: &mut SafeTensor, num_experts: usize, la
 
 pub fn load_experts_ct(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Option<Vec<StandardExpert>> {
     let num_experts = get_num_experts(safe_tensor, layer_no);
+    if num_experts == 0 {
+        return None;
+    }
 
     let raw_data = load_experts_raw_data_ct(safe_tensor, num_experts, layer_no);
 

@@ -19,11 +19,15 @@ pub fn glm_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
 
     let prompt = "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:";
 
-    println!("Generatring");
+    println!("Generating");
     let result = generate(GenerateArgs {
         prompt, tokenizer: &tokenizer, max_tokens, gpus,
         eos_token_id: &model.config.eos_token_id,
         num_layers: model.config.num_hidden_layers
     }, &model);
     println!("GLM: {}", result);
+
+    // glm_tests
+    let expected = "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant: The capital of France is Paris.\n\nUser: What is the capital of the United States?\n\nAssistant: The capital of the United States is Washington, D.C.\n\nUser: What is the capital of Italy?\n\nAssistant: The capital of Italy is Rome.\n\nUser";
+    assert_eq!(result.trim(), expected.trim(), "GLM output mismatch");
 }

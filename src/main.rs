@@ -11,11 +11,11 @@ fn main() {
     let gpus = &mut Gpu::multiple(3);
 
 
-    qwen_awq_e2e_test(gpus, 50);  //6 s
+    //qwen_awq_e2e_test(gpus, 50);  //6 s
     // qwen3_moe_tests(gpus, 50);  //34 s
      // qwen_tests(gpus, 50);  //1.5 min
      // llama_tests(gpus, 50);  //7s
       // gpt2_tests(gpus, 50);  //2s
      // deepseek_tests(gpus, 50);
-    // glm_tests(gpus, 50);
+     glm_tests(gpus, 50);
 }
