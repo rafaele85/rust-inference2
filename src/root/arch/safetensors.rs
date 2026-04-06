@@ -269,7 +269,7 @@ pub fn load_tensor_to_f32(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
 }
 
 
-fn load_shape_dims(safe_tensor: &mut SafeTensor, shape_key: &str) -> (usize, usize) {
+pub fn load_shape_dims(safe_tensor: &mut SafeTensor, shape_key: &str) -> (usize, usize) {
     let shape_dtype = safe_tensor.entries[shape_key].dtype.clone();
     if shape_dtype == "I64" {
         let bytes = load_tensor_raw(safe_tensor, shape_key);
@@ -283,7 +283,7 @@ fn load_shape_dims(safe_tensor: &mut SafeTensor, shape_key: &str) -> (usize, usi
     }
 }
 
-fn load_scales(safe_tensor: &mut SafeTensor, scale_key: &str) -> Vecf32 {
+pub fn load_scales(safe_tensor: &mut SafeTensor, scale_key: &str) -> Vecf32 {
     let scale_dtype = safe_tensor.entries[scale_key].dtype.clone();
     match scale_dtype.as_str() {
         "BF16" => load_tensor_bf16(safe_tensor, scale_key),

@@ -15,3 +15,5 @@ pub mod attention;
 pub mod logits;
 pub mod moe;
 pub mod config;
+
+pub mod model;

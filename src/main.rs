@@ -17,8 +17,8 @@ fn main() {
     // qwen_tests(gpus, 50);  //1.5 min
      // llama_tests(gpus, 50);  //7s
     // gpt2_tests(gpus, 50);  //2s
-    deepseek_tests(gpus, 50);
-    //glm_tests(gpus, 50);
+    // deepseek_tests(gpus, 50);
+    glm_tests(gpus, 50);
     //glm_test_config(gpus, 50);
     // glm_test_step2(gpus, 50);
     // glm_test_weights(gpus, 50);
