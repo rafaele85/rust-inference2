@@ -112,7 +112,10 @@ impl BpeTokenizer {
         let text = text.trim().replace(" ", &self.space_char);
         let prefix = if self.add_leading_space { &self.space_char } else { &"".to_string() };
         let prepended_text = format!("{}{}", prefix, text);
-        let tokens : Vec<String> = prepended_text.chars().map(|c| c.to_string()).collect();
+
+        let tokens: Vec<String> = prepended_text.bytes()
+            .map(|b| byte_to_unicode(b).to_string())
+            .collect();
 
         tokens
     }

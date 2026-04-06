@@ -125,29 +125,13 @@ impl SafeTensor {
         if self.entries.contains_key(&bf16_key) {
             load_tensor_to_f32(self, &bf16_key)
         } else if self.entries.contains_key(&packed_key) {
-            let packed = load_tensor_i32(self, &packed_key);
-            let scales = load_tensor_f32(self, &scale_key);
-
-            let shape_dtype = self.entries[&shape_key].dtype.clone();
-            let (out_dim, in_dim) = if shape_dtype == "I64" {
-                let bytes = load_tensor_raw(self, &shape_key);
-                let dims: Vec<i64> = bytes.chunks_exact(8)
-                    .map(|c| i64::from_le_bytes(c.try_into().unwrap()))
-                    .collect();
-                (dims[0] as usize, dims[1] as usize)
-            } else {
-                let shape = load_tensor_i32(self, &shape_key);
-                (shape[0] as usize, shape[1] as usize)
-            };
-
-            ct_dequantize(&packed, &scales, out_dim, in_dim)
+            load_compressed_tensor(self, &packed_key, &scale_key, &shape_key)
         } else if self.entries.contains_key(&awq_key) {
             load_tensor_awq(self, &format!("{}.{}", prefix, name))
         } else {
             panic!("Not found weight for {}.{}", prefix, name)
         }
     }
-
 
     pub fn load_dense_ffns(&mut self, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
         let has_dense_ffns = self.entries.contains_key(
@@ -165,7 +149,6 @@ impl SafeTensor {
             (None, None, None)
         }
     }
-
 
     pub fn load_weight_optional(&mut self, name: &str, layer: usize) -> Option<Vecf32> {
         let entries = &self.entries;
@@ -285,4 +268,35 @@ pub fn load_tensor_to_f32(safe_tensor: &mut SafeTensor, name: &str) -> Vecf32 {
     }
 }
 
+
+fn load_shape_dims(safe_tensor: &mut SafeTensor, shape_key: &str) -> (usize, usize) {
+    let shape_dtype = safe_tensor.entries[shape_key].dtype.clone();
+    if shape_dtype == "I64" {
+        let bytes = load_tensor_raw(safe_tensor, shape_key);
+        let dims: Vec<i64> = bytes.chunks_exact(8)
+            .map(|c| i64::from_le_bytes(c.try_into().unwrap()))
+            .collect();
+        (dims[0] as usize, dims[1] as usize)
+    } else {
+        let shape = load_tensor_i32(safe_tensor, shape_key);
+        (shape[0] as usize, shape[1] as usize)
+    }
+}
+
+fn load_scales(safe_tensor: &mut SafeTensor, scale_key: &str) -> Vecf32 {
+    let scale_dtype = safe_tensor.entries[scale_key].dtype.clone();
+    match scale_dtype.as_str() {
+        "BF16" => load_tensor_bf16(safe_tensor, scale_key),
+        "F16" => load_tensor_f16(safe_tensor, scale_key),
+        "F32" => load_tensor_f32(safe_tensor, scale_key),
+        _ => panic!("Unsupported scale dtype: {}", scale_dtype),
+    }
+}
+
+fn load_compressed_tensor(safe_tensor: &mut SafeTensor, packed_key: &str, scale_key: &str, shape_key: &str) -> Vecf32 {
+    let packed = load_tensor_i32(safe_tensor, packed_key);
+    let scales = load_scales(safe_tensor, scale_key);
+    let (out_dim, in_dim) = load_shape_dims(safe_tensor, shape_key);
+    ct_dequantize(&packed, &scales, out_dim, in_dim)
+}
 
