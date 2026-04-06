@@ -13,6 +13,7 @@ use crate::root::matmul::matmul_transposed_f16;
 use crate::root::norm::rms_norm;
 
 pub fn glm_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
+    println!("Loading model");
     let base_path = &resolve_hf_path("cyankiwi/GLM-4.7-Flash-AWQ-4bit");
     let tokenizer = BpeTokenizer::load(
         base_path,
@@ -26,6 +27,7 @@ pub fn glm_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
 
     let prompt = "<｜begin▁of▁sentence｜>User: What is the capital of France?\n\nAssistant:";
 
+    println!("Generatring");
     let result = generate(GenerateArgs {
         prompt, tokenizer: &tokenizer, max_tokens, gpus,
         eos_token_id: &model.config.eos_token_id,

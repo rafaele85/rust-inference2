@@ -66,9 +66,28 @@ pub struct Gpu {
 }
 
 pub fn get_gpu(gpus: &mut Vec<Gpu>, layer_no: usize, num_layers: usize) -> &mut Gpu {
+    //return get_gpu_weighted(gpus, layer_no, num_layers);
     let gpu_idx = layer_no * gpus.len() / num_layers;
 
     &mut gpus[gpu_idx]
+}
+
+pub fn get_gpu_weighted(gpus: &mut Vec<Gpu>, layer_no: usize, num_layers: usize) -> &mut Gpu {
+    // Weights: 24, 32, 24 = total 80
+    // GPU 0: 0-29% of layers, GPU 1: 30-69%, GPU 2: 70-100%
+    let capacities = [24.0, 32.0, 24.0];
+    let total: f64 = capacities.iter().sum();
+    let progress = layer_no as f64 / num_layers as f64;
+
+    let mut cumulative = 0.0;
+    for (i, &cap) in capacities.iter().enumerate() {
+        cumulative += cap / total;
+        if progress < cumulative {
+            return &mut gpus[i];
+        }
+    }
+    let last = gpus.len() - 1;
+    &mut gpus[last]
 }
 
 
