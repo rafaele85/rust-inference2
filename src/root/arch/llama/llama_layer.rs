@@ -3,7 +3,7 @@ use crate::root::arch::llama::llama_load_weight::{llama_load_bias};
 use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Vecf32, WeightF16};
 use crate::root::gpu::Gpu;
-use crate::root::layer::{load_common_weights, CommonWeights};
+use crate::root::layer::{load_ffn_weights, load_norm_weights, load_q_weights, FFNWeights, NormWeights};
 use crate::root::moe::StandardExpert;
 
 pub struct LlamaLayer {
@@ -31,9 +31,15 @@ pub struct LlamaLayer {
 
 impl LoadLayer for LlamaLayer {
     fn load_layer(safe_tensor: &mut SafeTensor, layer: usize, gpu: &mut Gpu) -> Self {
-        let common = load_common_weights(safe_tensor, layer, gpu);
-        let CommonWeights {input_norm_w, post_norm_w, q_proj_w, o_proj_w, gate_proj_w, up_proj_w, down_proj_w, experts, expert_router_w} = common;
+        let norm_weights = load_norm_weights(safe_tensor, layer, gpu);
+        let NormWeights {input_norm_w, post_norm_w } = norm_weights;
+        let ffn_weights = load_ffn_weights(safe_tensor, layer, gpu);
+        let FFNWeights {
+            gate_proj_w, up_proj_w, down_proj_w, o_proj_w,
+            experts, expert_router_w,
+        } = ffn_weights;
 
+        let q_proj_w = load_q_weights(safe_tensor, layer, gpu);
         let q_proj_b = llama_load_bias(safe_tensor, "self_attn.q_proj", layer);
 
         let k_proj_w = gpu.upload_f16_from_f32( &safe_tensor.load_layer_weight( "self_attn.k_proj", layer), &format!("k_proj_w{}", &layer) );

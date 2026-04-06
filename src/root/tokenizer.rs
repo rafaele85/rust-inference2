@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::fs;
 use serde::{Deserialize, Deserializer};
-use serde::de::Error;
 use serde_json::{Map, Value};
 
-enum TokenSegment {
-    Special(u32),
-    Text(String)
+
+pub enum DecoderType {
+    ByteLevel,       // GPT-2, Qwen, DeepSeek, GLM
+    Metaspace,       // Llama (SentencePiece-style)
 }
+
+
 pub struct BpeTokenizer {
     pub vocab: HashMap<String, u32>,
     pub id_to_token: HashMap<u32, String>,
@@ -16,6 +18,13 @@ pub struct BpeTokenizer {
     pub nl_char: String,
     pub add_leading_space: bool,
     pub added_tokens: Vec<(String, u32)>,
+    pub decoder_type: DecoderType,
+}
+
+
+enum TokenSegment {
+    Special(u32),
+    Text(String)
 }
 
 impl BpeTokenizer {
@@ -92,12 +101,13 @@ impl BpeTokenizer {
 
         let (vocab, id_to_token) = Self::build_vocab(vocab_map.clone());
         let added_tokens = BpeTokenizer::build_added_tokens(&json);
+        let decoder_type = parse_decoder_type(&json);
 
         let merges_arr = json["model"]["merges"].as_array().unwrap();
 
         let merges: Vec<(String, String)> = merges_arr.iter().map(|m| Self::parse_merge(m) ).collect();
 
-        Self {vocab, id_to_token, merges, space_char, nl_char, add_leading_space, added_tokens}
+        Self {vocab, id_to_token, merges, space_char, nl_char, add_leading_space, added_tokens, decoder_type}
     }
 
     fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
@@ -109,15 +119,28 @@ impl BpeTokenizer {
     }
 
     fn text_to_chars(&self, text: &str) -> Vec<String> {
-        let text = text.trim().replace(" ", &self.space_char);
-        let prefix = if self.add_leading_space { &self.space_char } else { &"".to_string() };
-        let prepended_text = format!("{}{}", prefix, text);
-
-        let tokens: Vec<String> = prepended_text.bytes()
-            .map(|b| byte_to_unicode(b).to_string())
-            .collect();
-
-        tokens
+        match self.decoder_type {
+            DecoderType::ByteLevel => {
+                let text = if self.add_leading_space {
+                    format!(" {}", text.trim())
+                } else {
+                    text.trim().to_string()
+                };
+                // byte_to_unicode handles EVERYTHING: space→Ġ, newline→Ċ, etc.
+                text.bytes()
+                    .map(|b| byte_to_unicode(b).to_string())
+                    .collect()
+            }
+            DecoderType::Metaspace => {
+                let text = text.trim().replace(" ", "▁");
+                let prepended = if self.add_leading_space {
+                    format!("▁{}", text)
+                } else {
+                    text
+                };
+                prepended.chars().map(|c| c.to_string()).collect()
+            }
+        }
     }
 
     fn find_best_pair_idx(&self, tokens: &mut Vec<String>, merge_ranks: &HashMap<(String, String), usize>) -> Option<usize> {
@@ -151,23 +174,39 @@ impl BpeTokenizer {
     }
 
     fn hex_to_id(&self, t: &String) -> Vec<u32> {
-        let bytes = t.as_bytes();
-        let mut result = Vec::new();
-
-        for &b in bytes {
-            let unicode_char = byte_to_unicode(b);
-            let unicode_str = unicode_char.to_string();
-
-            if let Some(&id) = self.vocab.get(&unicode_str) {
-                result.push(id);
-            } else {
-                // fallback to <0xHH> format for SentencePiece tokenizers
-                let hex = format!("<0x{:02X}>", b);
-                let id = *self.vocab.get(&hex).expect(&format!("vocab entry for byte 0x{:02X} not found", b));
-                result.push(id);
+        match self.decoder_type {
+            DecoderType::ByteLevel => {
+                let bytes = t.as_bytes();
+                let mut result = Vec::new();
+                for &b in bytes {
+                    let unicode_char = byte_to_unicode(b);
+                    let unicode_str = unicode_char.to_string();
+                    if let Some(&id) = self.vocab.get(&unicode_str) {
+                        result.push(id);
+                    } else {
+                        let hex = format!("<0x{:02X}>", b);
+                        let id = *self.vocab.get(&hex)
+                            .expect(&format!("vocab entry for byte 0x{:02X} not found", b));
+                        result.push(id);
+                    }
+                }
+                result
+            }
+            DecoderType::Metaspace => {
+                // SentencePiece byte fallback: each byte → <0xHH>
+                let bytes = t.as_bytes();
+                let mut result = Vec::new();
+                for &b in bytes {
+                    let hex = format!("<0x{:02X}>", b);
+                    if let Some(&id) = self.vocab.get(&hex) {
+                        result.push(id);
+                    } else {
+                        panic!("vocab entry for byte 0x{:02X} not found", b);
+                    }
+                }
+                result
             }
         }
-        result
     }
 
     fn token_to_ids(&self, t: &String) -> Vec<u32> {
@@ -202,9 +241,6 @@ impl BpeTokenizer {
         all_ids
     }
 
-    fn cleanup_decode(&self, s: &String) -> String {
-        s.replace(&self.space_char, " ").replace(&self.nl_char, "\n")
-    }
     pub fn decode(&self, ids: &Vec<u32>) -> String {
         let mut token_strings: Vec<String> = Vec::new();
         for &id in ids {
@@ -213,24 +249,75 @@ impl BpeTokenizer {
             }
         }
 
-        let text = token_strings.join("");
+        match self.decoder_type {
+            DecoderType::ByteLevel => {
+                self.decode_byte_level(token_strings)
+            }
+            DecoderType::Metaspace => {
+                self.decode_metaspace(token_strings)
+            }
+        }
+    }
 
+    fn decode_byte_level(&self, token_strings: Vec<String>) -> String {
+        let text = token_strings.join("");
         let mut bytes: Vec<u8> = Vec::new();
         for c in text.chars() {
             if let Some(b) = unicode_to_byte(c) {
                 bytes.push(b);
             } else {
-                // multi-byte char not in mapping, push its UTF-8 bytes directly
                 let mut buf = [0u8; 4];
                 let s = c.encode_utf8(&mut buf);
                 bytes.extend_from_slice(s.as_bytes());
             }
         }
+        let result = String::from_utf8_lossy(&bytes).to_string();
+        result
+    }
 
+
+    /// Llama (SentencePiece-style): Replace("▁"→" "), ByteFallback(<0xHH>→byte), Fuse, Strip
+    fn decode_metaspace(&self, token_strings: Vec<String>) -> String {
+        // Step 1: Replace ▁ with space in each token
+        let replaced: Vec<String> = token_strings.iter()
+            .map(|t| t.replace("▁", " "))
+            .collect();
+
+        // Step 2: ByteFallback — convert <0xHH> tokens to raw bytes
+        let mut bytes: Vec<u8> = Vec::new();
+        for token in &replaced {
+            if token.len() == 6
+                && token.starts_with("<0x")
+                && token.ends_with('>')
+            {
+                // ByteFallback: <0xHH> → single byte
+                if let Ok(b) = u8::from_str_radix(&token[3..5], 16) {
+                    bytes.push(b);
+                } else {
+                    bytes.extend_from_slice(token.as_bytes());
+                }
+            } else {
+                bytes.extend_from_slice(token.as_bytes());
+            }
+        }
+
+        // Step 3: Fuse (already done — bytes are concatenated)
         let text = String::from_utf8_lossy(&bytes).to_string();
-        let res = self.cleanup_decode(&text);
-        
-        res
+
+        // Step 4: Strip leading space if add_leading_space
+        if self.add_leading_space {
+            text.strip_prefix(' ').unwrap_or(&text).to_string()
+        } else {
+            text
+        }
+    }
+
+    fn is_added_token(&self, id: u32) -> bool {
+        self.added_tokens.iter().any(|(_, tid)| *tid == id)
+    }
+
+    fn to_byte_mapped(&self, s: &str) -> String {
+        s.bytes().map(|b| byte_to_unicode(b)).collect()
     }
 }
 
@@ -277,13 +364,34 @@ fn byte_to_unicode(b: u8) -> char {
 }
 
 
-fn unicode_to_byte(c: char) -> Option<u8> {
-    let code = c as u32;
-    if code >= 0x0100 && code <= 0x0120 { return Some((code - 0x0100) as u8); }
-    if code >= 0x0021 && code <= 0x007E { return Some((code - 0x0021 + 33) as u8); }
-    if code >= 0x0121 && code <= 0x0142 { return Some((code - 0x0121 + 127) as u8); }
-    if code >= 0x00A1 && code <= 0x00AC { return Some((code - 0x00A1 + 161) as u8); }
-    if code == 0x0143 { return Some(173); }
-    if code >= 0x00AE && code <= 0x00FF { return Some((code - 0x00AE + 174) as u8); }
+
+pub fn unicode_to_byte(c: char) -> Option<u8> {
+    for (byte, &mapped) in BYTES_TO_UNICODE.iter().enumerate() {
+        if mapped == c {
+            return Some(byte as u8);
+        }
+    }
     None
+}
+
+fn parse_decoder_type(json: &Value) -> DecoderType {
+    let decoder = &json["decoder"];
+    if decoder.is_null() {
+        return DecoderType::ByteLevel;  // Default for GPT-2
+    }
+    let dtype = decoder["type"].as_str().unwrap_or("");
+    if dtype == "Metaspace" {
+        return DecoderType::Metaspace;
+    }
+    if dtype == "Sequence" {
+        if let Some(decoders) = decoder["decoders"].as_array() {
+            for d in decoders {
+                let t = d["type"].as_str().unwrap_or("");
+                if t == "Replace" || t == "Metaspace" {
+                    return DecoderType::Metaspace;
+                }
+            }
+        }
+    }
+    DecoderType::ByteLevel
 }

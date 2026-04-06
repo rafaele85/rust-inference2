@@ -22,4 +22,8 @@ pub fn llama_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
         prompt, tokenizer: &llama_tokenizer, max_tokens, gpus, eos_token_id: &llama_model.config.eos_token_id, num_layers: llama_model.config.num_hidden_layers
     }, &llama_model);
     println!("LLama: {}", result);
+
+    let expected = "<|system|>\nYou are a helpful assistant.</s> <|user|>\nWhat is the capital of France?</s> <|assistant|>\nThe capital of France is Paris.</s>";
+    assert_eq!(result.trim(), expected.trim(), "LLama output mismatch");
+
 }

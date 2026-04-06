@@ -22,4 +22,7 @@ pub fn gpt2_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
         prompt, tokenizer: &gpt2_tokenizer, max_tokens, gpus, eos_token_id: &gpt2_model.config.eos_token_id, num_layers: gpt2_model.config.n_layer
     }, &gpt2_model);
     println!("GPT-2: {}", result);
+
+    let expected = "The capital of France is the capital of the French Republic, and the capital of the French Republic is the capital of the French Republic.\n\nThe French Republic is the capital of the French Republic.\n\nThe French Republic is the capital of the French Republic.\n\nThe";
+    assert_eq!(result.trim(), expected.trim(), "GPT-2 output mismatch");
 }

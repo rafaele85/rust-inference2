@@ -29,13 +29,6 @@ impl GLMModel {
 
         let lm_head_exists = safe_tensor.entries.contains_key("lm_head.weight");
 
-        // In GLMModel::new, before loading lm_head_w:
-        let lm_head_exists = safe_tensor.entries.contains_key("lm_head.weight");
-
-        // Also check embed_tokens
-        let embed_entry = &safe_tensor.entries["model.embed_tokens.weight"];
-        println!("embed dtype: {}, shape: {:?}", embed_entry.dtype, embed_entry.shape);
-
         let lm_head_w  = if lm_head_exists {
             let raw = &load_tensor_to_f32(safe_tensor, "lm_head.weight");
             default_gpu.upload_f16_from_f32(raw, "lm_head_w" )

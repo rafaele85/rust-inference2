@@ -4,9 +4,9 @@ use crate::root::arch::safetensors::{SafeTensor};
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
 use crate::root::config::{MLAConfig, NormConfig};
 use crate::root::gpu::Gpu;
-use crate::root::layer::{load_shared_experts, FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
+use crate::root::layer::{load_ffn_weights, load_norm_weights, load_shared_experts, FFNLayer, FFNWeights, MLAKVLayer, MOELayer, NormWeights, SharedExpertLayer};
 use crate::root::matmul::matmul_transposed_f16;
-use crate::root::moe::{load_experts_awq, load_experts_bf16, load_experts_ct, StandardExpert};
+use crate::root::moe::{StandardExpert};
 use crate::root::norm::rms_norm;
 
 pub struct GLMLayer {
@@ -37,8 +37,18 @@ pub struct GLMLayer {
 impl LoadLayer for GLMLayer {
     fn load_layer(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Self {
 
-        let input_norm_w = safe_tensor.load_layer_weight("input_layernorm", layer_no);
-        let post_norm_w = safe_tensor.load_layer_weight("post_attention_layernorm", layer_no);
+        let norm_weights = load_norm_weights(safe_tensor, layer_no, gpu);
+        let NormWeights {input_norm_w, post_norm_w} = norm_weights;
+
+        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, gpu);
+        let FFNWeights {
+            gate_proj_w, up_proj_w, down_proj_w, o_proj_w,
+            experts, expert_router_w,
+        } = ffn_weights;
+        // Shared experts
+        let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) =
+            load_shared_experts(safe_tensor, layer_no, gpu);
+
 
         // MLA Query projections (GLM-specific LoRA path)
         let q_a_proj_w = gpu.upload_f16_from_f32(
@@ -62,35 +72,6 @@ impl LoadLayer for GLMLayer {
         );
         let kv_a_layernorm_w = safe_tensor.load_layer_weight("self_attn.kv_a_layernorm", layer_no);
 
-        let o_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight("self_attn.o_proj", layer_no),
-            &format!("o_proj_{}", layer_no)
-        );
-
-        // FFN
-        let (gate_proj_w, up_proj_w, down_proj_w) = safe_tensor.load_dense_ffns(layer_no, gpu);
-
-        // MoE
-        let expert_router_w = safe_tensor.load_weight_optional("mlp.gate", layer_no);
-
-
-        let bf16_key = format!("model.layers.{}.mlp.experts.0.gate_proj.weight", layer_no);
-        let awq_key = format!("model.layers.{}.mlp.experts.0.gate_proj.qweight", layer_no);
-        let ct_key = format!("model.layers.{}.mlp.experts.0.gate_proj.weight_packed", layer_no);
-
-        let experts = if safe_tensor.entries.contains_key(&bf16_key) {
-            load_experts_bf16(safe_tensor, layer_no, gpu)
-        } else if safe_tensor.entries.contains_key(&awq_key) {
-            load_experts_awq(safe_tensor, layer_no, gpu)
-        } else if safe_tensor.entries.contains_key(&ct_key) {
-            load_experts_ct(safe_tensor, layer_no, gpu)
-        } else {
-            None
-        };
-
-        // Shared experts
-        let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) =
-            load_shared_experts(safe_tensor, layer_no, gpu);
 
         Self {
             input_norm_w, post_norm_w,

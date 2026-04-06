@@ -30,6 +30,10 @@ pub fn qwen_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     }, &qwen_model);
 
     println!("Qwen: {}", result);
+
+    // qwen_tests
+    let expected = "The capital of France is Paris. The capital of Spain is Madrid. The capital of Italy is Rome. The capital of Germany is Berlin. The capital of the Netherlands is Amsterdam. The capital of Belgium is Brussels. The capital of Luxembourg is Luxembourg City. The capital of Austria is";
+    assert_eq!(result.trim(), expected.trim(), "Qwen output mismatch");
 }
 
 
@@ -89,6 +93,10 @@ pub fn qwen3_moe_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     }, &qwen3_moe_model);
 
     println!("Qwen3-MoE: {}", result);
+
+    // qwen3_moe_tests
+    let expected = "The capital of France is Paris. The capital of the United States is Washington D.C. The capital of the United Kingdom is London. The capital of the Netherlands is Amsterdam. The capital of the Germany is Berlin. The capital of the Italy is Rome. The capital of the Spain";
+    assert_eq!(result.trim(), expected.trim(), "Qwen3-MoE output mismatch");
 }
 
 pub fn qwen_awq_tests() {
@@ -190,4 +198,8 @@ pub fn qwen_awq_e2e_test(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     }, &model);
 
     println!("AWQ Qwen: {}", result);
+
+    // qwen_awq_e2e_test
+    let expected = "The capital of France is Paris. The capital of the United States is Washington, D. C. The capital of the United Kingdom is London. The capital of the United States is Washington, D. C. The capital of the United Kingdom is London. The capital of the United";
+    assert_eq!(result.trim(), expected.trim(), "AWQ Qwen output mismatch");
 }

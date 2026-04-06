@@ -4,7 +4,7 @@ use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
 use crate::root::config::{MLAConfig, NormConfig};
 use crate::root::gpu::Gpu;
-use crate::root::layer::{load_common_weights, load_shared_experts, CommonWeights, FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
+use crate::root::layer::{load_ffn_weights, load_norm_weights, load_shared_experts, FFNLayer, FFNWeights, MLAKVLayer, MOELayer, NormWeights, SharedExpertLayer};
 use crate::root::moe::StandardExpert;
 
 pub struct DeepseekLayer {
@@ -105,13 +105,19 @@ impl SharedExpertLayer for DeepseekLayer {
 
 impl LoadLayer for DeepseekLayer {
     fn load_layer(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Self {
-        let common = load_common_weights(safe_tensor, layer_no, gpu);
-        let CommonWeights {input_norm_w, post_norm_w, q_proj_w, o_proj_w, gate_proj_w, up_proj_w, down_proj_w, experts, expert_router_w} = common;
+        let norm_weights = load_norm_weights(safe_tensor, layer_no, gpu);
+        let NormWeights {input_norm_w, post_norm_w } = norm_weights;
+        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, gpu);
+        let FFNWeights {
+            gate_proj_w, up_proj_w, down_proj_w, o_proj_w,
+            experts, expert_router_w,
+        } = ffn_weights;
+        let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) = load_shared_experts(safe_tensor, layer_no, gpu);
+        let q_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.q_proj", layer_no), &format!("q_proj_w{}", layer_no));
 
         let kv_a_layernorm_w = safe_tensor.load_layer_weight("self_attn.kv_a_layernorm", layer_no);
         let kv_a_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.kv_a_proj_with_mqa", layer_no), &format!("kv_a_proj_w{}", layer_no));
         let kv_b_proj_w = gpu.upload_f16_from_f32(&safe_tensor.load_layer_weight("self_attn.kv_b_proj", layer_no), &format!("kv_b_proj_w{}", layer_no));
-        let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) = load_shared_experts(safe_tensor, layer_no, gpu);
 
         Self {
             input_norm_w, post_norm_w,
