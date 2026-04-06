@@ -1,3 +1,4 @@
+use cudarc::driver::DeviceSlice;
 use crate::root::activation::silu;
 use crate::root::attention::{mla_attention, MLAAttentionArgs};
 use crate::root::common_types::{Vecf32, WeightF16};
@@ -144,7 +145,12 @@ fn shared_experts<TLayer: SharedExpertLayer, TConfig: MoeConfig + ModelDimConfig
     let SharedExpertsArgs {hidden, normed, layer, config, gpu} = args;
 
     if let (Some(gate_w), Some(up_w), Some(down_w)) = (&layer.get_shared_gate_proj_w(), &layer.get_shared_up_proj_w(), &layer.get_shared_down_proj_w()) {
-        let shared_intermediate = config.get_n_shared_experts() * config.get_moe_intermediate_size();
+        let shared_intermediate = if config.get_n_shared_experts() > 0 && config.get_moe_intermediate_size() > 0 {
+            config.get_n_shared_experts() * config.get_moe_intermediate_size()
+        } else {
+            // Derive from weight size: gate_w is [hidden_size, intermediate], so total elements / hidden_size
+            gate_w.len() / config.get_hidden_size()
+        };
         let gate = matmul_transposed_f16(normed, gate_w, shared_intermediate, gpu);
         let silu_gate = silu(&gate);
         let up = matmul_transposed_f16(normed, up_w, shared_intermediate, gpu);
