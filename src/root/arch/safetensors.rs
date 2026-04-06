@@ -123,16 +123,22 @@ impl SafeTensor {
         let awq_key = format!("{}.{}.qweight", prefix, name);
 
         if self.entries.contains_key(&bf16_key) {
-            // Layer 0: regular bfloat16
             load_tensor_to_f32(self, &bf16_key)
         } else if self.entries.contains_key(&packed_key) {
-            // Layers 1+: AWQ packed format
             let packed = load_tensor_i32(self, &packed_key);
-            let scales = load_tensor_f32(self, &scale_key); // or f16 then convert
-            let shape = load_tensor_i32(self, &shape_key);  // [out_dim, in_dim]
+            let scales = load_tensor_f32(self, &scale_key);
 
-            let out_dim = shape[0] as usize;
-            let in_dim = shape[1] as usize;
+            let shape_dtype = self.entries[&shape_key].dtype.clone();
+            let (out_dim, in_dim) = if shape_dtype == "I64" {
+                let bytes = load_tensor_raw(self, &shape_key);
+                let dims: Vec<i64> = bytes.chunks_exact(8)
+                    .map(|c| i64::from_le_bytes(c.try_into().unwrap()))
+                    .collect();
+                (dims[0] as usize, dims[1] as usize)
+            } else {
+                let shape = load_tensor_i32(self, &shape_key);
+                (shape[0] as usize, shape[1] as usize)
+            };
 
             ct_dequantize(&packed, &scales, out_dim, in_dim)
         } else if self.entries.contains_key(&awq_key) {
