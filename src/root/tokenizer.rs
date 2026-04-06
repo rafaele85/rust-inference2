@@ -14,6 +14,7 @@ pub struct BpeTokenizer {
     pub vocab: HashMap<String, u32>,
     pub id_to_token: HashMap<u32, String>,
     pub merges: Vec<(String, String)>,
+    pub merge_ranks: HashMap<(String, String), usize>,
     pub space_char: String,
     pub nl_char: String,
     pub add_leading_space: bool,
@@ -106,8 +107,11 @@ impl BpeTokenizer {
         let merges_arr = json["model"]["merges"].as_array().unwrap();
 
         let merges: Vec<(String, String)> = merges_arr.iter().map(|m| Self::parse_merge(m) ).collect();
-
-        Self {vocab, id_to_token, merges, space_char, nl_char, add_leading_space, added_tokens, decoder_type}
+        let mut merge_ranks: HashMap<(String, String), usize> = HashMap::new();
+        for (i, (a, b)) in merges.iter().enumerate() {
+            merge_ranks.insert((a.clone(), b.clone()), i);
+        }
+        Self {vocab, id_to_token, merges, merge_ranks, space_char, nl_char, add_leading_space, added_tokens, decoder_type}
     }
 
     fn fill_merge_ranks(&self) -> HashMap<(String, String), usize> {
@@ -224,7 +228,6 @@ impl BpeTokenizer {
     }
 
     pub fn encode(&self, text: &str) -> Vec<u32> {
-        let merge_ranks = self.fill_merge_ranks();
         let segments = self.split_on_added_tokens(text);
         let mut all_ids = Vec::new();
         for segment in segments {
@@ -232,7 +235,7 @@ impl BpeTokenizer {
                 TokenSegment::Special(id) => all_ids.push(id),
                 TokenSegment::Text(t) => {
                     let mut tokens = self.text_to_chars(&t);
-                    while self.merge_best(&mut tokens, &merge_ranks) {}
+                    while self.merge_best(&mut tokens, &self.merge_ranks) {}
                     let token_ids = self.tokens_to_ids(tokens);
                     all_ids.extend(token_ids);
                 }
