@@ -2,7 +2,7 @@ use cudarc::driver::DeviceSlice;
 use crate::root::activation::silu;
 use crate::root::attention::{mla_attention, MLAAttentionArgs};
 use crate::root::common_types::{Vecf32, WeightF16};
-use crate::root::config::{FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
+use crate::root::config::{AttnConfig, FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
 use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
 use crate::root::layer::{FFNLayer, MLAKVLayer, MOELayer, SharedExpertLayer};
@@ -77,7 +77,7 @@ pub fn generate<TM: GenerateNextToken>(args: GenerateArgs, model: &TM) -> String
 }
 
 
-pub struct ApplyLayerArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig> {
+pub struct ApplyLayerArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer, TConfig: ModelDimConfig + NormConfig + AttnConfig + MoeConfig + FFNConfig + MLAConfig> {
     pub hidden: &'a mut Vecf32,
     pub layer: &'a TLayer,
     pub config: &'a TConfig,
@@ -87,7 +87,7 @@ pub struct ApplyLayerArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer, T
     pub gpu: &'a mut Gpu,
 }
 
-pub fn apply_layer<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MLAConfig + MoeConfig + FFNConfig>(
+pub fn apply_layer<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + AttnConfig + MoeConfig + FFNConfig + MLAConfig>(
     args: ApplyLayerArgs<TLayer, TConfig>
 ) {
     let ApplyLayerArgs { layer, config, kv_cache, layer_no, position, mut gpu, hidden} = args;
@@ -161,7 +161,7 @@ fn shared_experts<TLayer: SharedExpertLayer, TConfig: MoeConfig + ModelDimConfig
 }
 
 
-pub struct GenerateTokenArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig, TM: Model> {
+pub struct GenerateTokenArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig + AttnConfig, TM: Model> {
     pub token_id: usize,
     pub position: usize,
     pub config: &'a TConfig,
@@ -171,7 +171,7 @@ pub struct GenerateTokenArgs<'a, TLayer: SharedExpertLayer + FFNLayer + MOELayer
     pub model: &'a TM,
 }
 
-pub fn generate_token<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig, TM: Model>(
+pub fn generate_token<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLayer, TConfig: ModelDimConfig + NormConfig + MoeConfig + FFNConfig + MLAConfig + AttnConfig, TM: Model>(
     args: GenerateTokenArgs<TLayer, TConfig, TM>
 ) -> usize {
     let GenerateTokenArgs {token_id, position, model, config, layers, kv_cache, mut gpus} = args;

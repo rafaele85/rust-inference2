@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use crate::root::activation::softmax;
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
-use crate::root::config::{MLAConfig, ModelDimConfig, NormConfig};
+use crate::root::config::{AttnConfig, MLAConfig, ModelDimConfig, NormConfig};
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
 use crate::root::layer::{MLAKVLayer};
@@ -11,12 +11,12 @@ use crate::root::norm::rms_norm;
 use crate::root::rope::{apply_rope, apply_rope_to_head, compute_rope_freqs, ApplyRopeArgs, ApplyRopeToHeadArgs};
 
 pub struct ComputeQKScoresArgs<'a> {
-    pub(crate) cache_len: usize,
-    pub(crate) q_offset: usize,
-    pub(crate) head_dim: usize,
-    pub(crate) q: &'a Vecf32,
-    pub(crate) kv_offset: usize,
-    pub(crate) k_cache: &'a PositionKVVectors
+    pub cache_len: usize,
+    pub q_offset: usize,
+    pub head_dim: usize,
+    pub q: &'a Vecf32,
+    pub kv_offset: usize,
+    pub k_cache: &'a PositionKVVectors
 }
 pub fn compute_qk_scores(args: ComputeQKScoresArgs) -> Vecf32 {
     let ComputeQKScoresArgs {cache_len, head_dim, q_offset, kv_offset, q, k_cache} = args;
@@ -33,7 +33,7 @@ pub fn compute_qk_scores(args: ComputeQKScoresArgs) -> Vecf32 {
     probs
 }
 
-pub fn project_v_to_attn(attn_out: &mut Vecf32, probs: &Vecf32, cache:  &&PositionKVVectors, cache_len: usize, dim: usize, cache_offset: usize, attn_offset: usize) {
+pub fn project_v_to_attn(attn_out: &mut Vecf32, probs: &Vecf32, cache:  &PositionKVVectors, cache_len: usize, dim: usize, cache_offset: usize, attn_offset: usize) {
     for pos in 0..cache_len {
         for i in 0..dim {
             attn_out[attn_offset+i] += probs[pos] * cache[pos][cache_offset+i];
@@ -53,13 +53,13 @@ fn kv_up_project(compressed_kv: &Vecf32, kv_a_layernorm_w: &Vecf32, kv_b_proj_w:
     matmul_transposed_f16(&normed_kv, kv_b_proj_w, kv_b_total, gpu)
 }
 
-struct BuildKVForCachingArgs<'a, TConfig: MLAConfig + ModelDimConfig> {
+struct BuildKVForCachingArgs<'a, TConfig: MLAConfig + ModelDimConfig + AttnConfig> {
     config: &'a TConfig,
     kv_b: &'a Vecf32,
     k_rope_roped: &'a Arrf32,
     qk_head_dim: usize,
 }
-fn build_kv_for_caching<TConfig: MLAConfig + ModelDimConfig>(args: BuildKVForCachingArgs<TConfig>) -> (Vecf32, Vecf32) {
+fn build_kv_for_caching<TConfig: MLAConfig + ModelDimConfig + AttnConfig>(args: BuildKVForCachingArgs<TConfig>) -> (Vecf32, Vecf32) {
     let BuildKVForCachingArgs {kv_b, k_rope_roped, config, qk_head_dim } = args;
     assert_eq!(k_rope_roped.len(), config.get_qk_rope_head_dim(), "k_rope_roped length mismatch");
     let mut full_k = vec![0.0f32; config.get_num_attention_heads() * qk_head_dim];
@@ -88,7 +88,7 @@ struct ApplyMLARopeResult  {
     k_rope_roped: Vecf32,
 }
 
-struct ApplyMLARopeArgs<'a, TConfig: MLAConfig> {
+struct ApplyMLARopeArgs<'a, TConfig: MLAConfig + AttnConfig> {
     q_raw: &'a Vecf32,
     k_rope_shared: &'a Vecf32,
     position: usize,
@@ -96,7 +96,7 @@ struct ApplyMLARopeArgs<'a, TConfig: MLAConfig> {
     qk_head_dim: usize,
 }
 
-fn apply_mla_rope<TConfig: MLAConfig>(args: ApplyMLARopeArgs<TConfig>) -> ApplyMLARopeResult {
+fn apply_mla_rope<TConfig: MLAConfig + AttnConfig>(args: ApplyMLARopeArgs<TConfig>) -> ApplyMLARopeResult {
     let ApplyMLARopeArgs {q_raw, k_rope_shared, config, position, qk_head_dim } = args;
     let half = config.get_qk_rope_head_dim()/2;
     let (cos, sin) = compute_rope_freqs(half, position, config.get_rope_theta());
@@ -147,7 +147,7 @@ fn q_project(normed: &Cow<Arrf32>, q_proj_w: &WeightF16, q_total: usize, gpu: &m
     res
 }
 
-pub struct MLAAttentionArgs<'a, TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig> {
+pub struct MLAAttentionArgs<'a, TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig + AttnConfig> {
     pub hidden: &'a mut Vecf32,
     pub normed: &'a Vecf32,
     pub layer: &'a TLayer,
@@ -157,7 +157,7 @@ pub struct MLAAttentionArgs<'a, TLayer: MLAKVLayer, TConfig: NormConfig + ModelD
     pub gpu: &'a mut Gpu,
     pub config: &'a TConfig,
 }
-pub fn mla_attention<TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig>(args: MLAAttentionArgs<TLayer, TConfig>) {  // reuse same args struct
+pub fn mla_attention<TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + MLAConfig + AttnConfig>(args: MLAAttentionArgs<TLayer, TConfig>) {  // reuse same args struct
     let MLAAttentionArgs {hidden, normed,
         layer,
         config,
@@ -192,4 +192,38 @@ pub fn mla_attention<TLayer: MLAKVLayer, TConfig: NormConfig + ModelDimConfig + 
     let projected = matmul_transposed_f16(&attn_out, layer.get_o_proj_w(), config.get_hidden_size(), gpu);
 
     add_to_vector(hidden, &projected);
+}
+
+pub fn gqa_attention<TC: AttnConfig>(
+    q: &Vecf32,
+    k_cache: &PositionKVVectors,
+    v_cache: &PositionKVVectors,
+    tc: &TC,
+    attn_dim: usize,
+    repeats: usize,
+) -> Vecf32 {
+    let cache_len = k_cache.len();
+    let head_dim = tc.get_head_dim();
+    let num_attention_heads = tc.get_num_attention_heads();
+
+    let mut attn_out = vec![0.0; attn_dim];
+
+    for h in 0..num_attention_heads {
+        let kv_h = h / repeats;
+        let q_offset = h * head_dim;
+        let kv_offset = kv_h * head_dim;
+
+        let probs = compute_qk_scores(ComputeQKScoresArgs {
+            cache_len,
+            q_offset,
+            head_dim,
+            q,
+            kv_offset,
+            k_cache: &k_cache,
+        });
+
+        project_v_to_attn(&mut attn_out, &probs, &v_cache, cache_len, head_dim, kv_offset, q_offset);
+    }
+
+    attn_out
 }

@@ -2,14 +2,16 @@ use std::sync::Arc;
 use cudarc::cublas::CudaBlas;
 use cudarc::cublas::result::{hgemm, sgemm};
 use cudarc::cublas::sys::cublasOperation_t::{CUBLAS_OP_N, CUBLAS_OP_T};
-use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr, DevicePtrMut, DeviceSlice};
+use cudarc::driver::{CudaDevice, CudaSlice, DevicePtr, DevicePtrMut, DeviceSlice, LaunchAsync};
 use cudarc::driver::result::mem_get_info;
+use cudarc::nvrtc::Ptx;
 use half::f16;
 use crate::root::common_types::{Arrf16, Arrf32, Vecf16, Vecf32, WeightF16};
 
 pub type CudaArrf32 = CudaSlice<f32>;
 pub type CudaArrf16 = CudaSlice<f16>;
 
+pub type CudaArru32 = CudaSlice<u32>;
 
 fn f16_from_f32_arr(data: &Arrf32) -> Vecf16 {
     let res = data.iter().map(|x| f16::from_f32(*x)).collect::<Vec<_>>();
@@ -17,11 +19,12 @@ fn f16_from_f32_arr(data: &Arrf32) -> Vecf16 {
     res
 }
 
-struct GpuScratch {
+pub struct GpuScratch {
     input_f32: CudaSlice<f32>,
     output_f32: CudaSlice<f32>,
     input_f16: CudaSlice<f16>,
     output_f16: CudaSlice<f16>,
+    pub(crate) expert_f16: CudaSlice<f16>,
 }
 
 impl GpuScratch {
@@ -32,6 +35,7 @@ impl GpuScratch {
             output_f32: dev.alloc_zeros::<f32>(init).unwrap(),
             input_f16: dev.alloc_zeros::<f16>(init).unwrap(),
             output_f16: dev.alloc_zeros::<f16>(init).unwrap(),
+            expert_f16: dev.alloc_zeros::<f16>(1).unwrap(),
         }
     }
 
@@ -56,13 +60,19 @@ impl GpuScratch {
             self.output_f16 = dev.alloc_zeros::<f16>(out_len).unwrap();
         }
     }
+
+    pub(crate) fn ensure_expert_f16(&mut self, dev: &Arc<CudaDevice>, len: usize) {
+        if self.expert_f16.len() != len {
+            self.expert_f16 = dev.alloc_zeros::<f16>(len).unwrap();
+        }
+    }
 }
 
 pub struct Gpu {
     pub gpu_index: usize,
     pub dev: Arc<CudaDevice>,
     pub blas: CudaBlas,
-    scratch: GpuScratch,
+    pub(crate) scratch: GpuScratch,
 }
 
 pub fn get_gpu(gpus: &mut Vec<Gpu>, layer_no: usize, num_layers: usize) -> &mut Gpu {
@@ -97,18 +107,23 @@ pub fn get_default_gpu<'a>(gpus: &'a mut Vec<Gpu>, _purpose: &str) -> &'a mut Gp
 
 impl Gpu {
 
+    pub fn new(gpu_index: usize) -> Self {
+        let dev = CudaDevice::new(gpu_index).unwrap();
+        let blas = CudaBlas::new(dev.clone()).unwrap();
+        let scratch = GpuScratch::new(&dev);
+
+        let ptx = Ptx::from_file("ptx/mlx_dequant_4bit.ptx");
+        dev.load_ptx(ptx, "mlx_dequant", &["mlx_dequant_4bit"]).unwrap();
+
+        Gpu { dev, blas, gpu_index, scratch }
+    }
+
     pub fn multiple(num_gpus: usize) -> Vec<Gpu> {
         let gpus = (0..num_gpus).map(|x| Gpu::new(x)).collect::<Vec<_>>();
 
         gpus
     }
 
-    pub fn new(gpu_index: usize) -> Self {
-        let dev = CudaDevice::new(gpu_index).unwrap();
-        let blas = CudaBlas::new(dev.clone()).unwrap();
-        let scratch = GpuScratch::new(&dev);
-        Gpu { dev, blas, gpu_index, scratch }
-    }
 
     pub fn mem_info(&self) -> (usize, usize) {
         let (free, total) = mem_get_info().unwrap();
@@ -224,5 +239,9 @@ impl Gpu {
         let output = output_f16.iter().map(|&x| x.to_f32()).collect::<Vec<_>>();
 
         output
+    }
+
+    pub fn upload_u32(&mut self, data: &[u32], _weight_name: &str) -> CudaSlice<u32> {
+        self.dev.htod_sync_copy(data).unwrap()
     }
 }

@@ -2,7 +2,7 @@ use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs;
 use serde::{Deserialize};
 use serde_json::{from_str};
-use crate::root::config::{ModelDimConfig, MoeConfig};
+use crate::root::config::{AttnConfig, MLAConfig, MLXConfig, ModelDimConfig, MoeConfig};
 
 #[derive(Deserialize)]
 pub struct LlamaConfig {
@@ -28,7 +28,15 @@ pub struct LlamaConfig {
     pub num_experts_per_tok: usize,
     #[serde(default)]
     pub moe_intermediate_size: usize,
+
+    #[serde(default = "default_bits")]
+    pub bits: usize,
+    #[serde(default = "default_group_size")]
+    pub group_size: usize,
 }
+
+fn default_bits() -> usize { 4 }
+fn default_group_size() -> usize { 64 }
 
 impl LlamaConfig {
     pub fn load(path: &str) -> Self {
@@ -81,3 +89,22 @@ impl ModelDimConfig for LlamaConfig {
     }
 }
 
+
+impl MLXConfig for LlamaConfig {
+    fn get_bits(&self) -> usize {
+        self.bits
+    }
+    fn get_group_size(&self) -> usize {
+        self.group_size
+    }
+}
+
+impl AttnConfig for LlamaConfig {
+    fn get_num_attention_heads(&self) -> usize {
+        self.num_attention_heads
+    }
+
+    fn get_head_dim(&self) -> usize {
+        self.head_dim
+    }
+}

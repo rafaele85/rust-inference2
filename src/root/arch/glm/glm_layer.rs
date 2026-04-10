@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use crate::root::arch::common::LoadLayer;
-use crate::root::arch::safetensors::{SafeTensor};
+use crate::root::arch::safetensors::{LoadLayerWeightArgs, SafeTensor};
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16};
-use crate::root::config::{MLAConfig, NormConfig};
+use crate::root::config::{MLAConfig, MLXConfig, NormConfig};
 use crate::root::gpu::Gpu;
 use crate::root::layer::{load_ffn_weights, load_norm_weights, load_shared_experts, FFNLayer, FFNWeights, MLAKVLayer, MOELayer, NormWeights, SharedExpertLayer};
 use crate::root::matmul::matmul_transposed_f16;
@@ -35,42 +35,42 @@ pub struct GLMLayer {
 }
 
 impl LoadLayer for GLMLayer {
-    fn load_layer(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Self {
+    fn load_layer<TC: MLXConfig>(safe_tensor: &mut SafeTensor, layer_no: usize, config: &TC, gpu: &mut Gpu) -> Self {
 
-        let norm_weights = load_norm_weights(safe_tensor, layer_no, gpu);
+        let norm_weights = load_norm_weights(safe_tensor, layer_no, config, gpu);
         let NormWeights {input_norm_w, post_norm_w} = norm_weights;
 
-        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, gpu);
+        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, config, gpu);
         let FFNWeights {
             gate_proj_w, up_proj_w, down_proj_w, o_proj_w,
             experts, expert_router_w,
         } = ffn_weights;
         // Shared experts
         let (shared_gate_proj_w, shared_up_proj_w, shared_down_proj_w) =
-            load_shared_experts(safe_tensor, layer_no, gpu);
+            load_shared_experts(safe_tensor, layer_no, config, gpu);
 
 
         // MLA Query projections (GLM-specific LoRA path)
         let q_a_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight("self_attn.q_a_proj", layer_no),
+            &safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.q_a_proj", layer_no, config}),
             &format!("q_a_proj_{}", layer_no)
         );
         let q_b_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight("self_attn.q_b_proj", layer_no),
+            &safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.q_b_proj", layer_no, config}),
             &format!("q_b_proj_{}", layer_no)
         );
-        let q_a_layernorm_w = safe_tensor.load_layer_weight("self_attn.q_a_layernorm", layer_no);
+        let q_a_layernorm_w = safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.q_a_layernorm", layer_no, config});
 
         // MLA KV projections
         let kv_a_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight("self_attn.kv_a_proj_with_mqa", layer_no),
+            &safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.kv_a_proj_with_mqa", layer_no, config}),
             &format!("kv_a_proj_{}", layer_no)
         );
         let kv_b_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight("self_attn.kv_b_proj", layer_no),
+            &safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.kv_b_proj", layer_no, config}),
             &format!("kv_b_proj_{}", layer_no)
         );
-        let kv_a_layernorm_w = safe_tensor.load_layer_weight("self_attn.kv_a_layernorm", layer_no);
+        let kv_a_layernorm_w = safe_tensor.load_layer_weight(LoadLayerWeightArgs {name: "self_attn.kv_a_layernorm", layer_no, config});
 
 
         Self {

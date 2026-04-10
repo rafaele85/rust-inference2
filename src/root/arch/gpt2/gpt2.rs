@@ -26,7 +26,7 @@ impl GPT2Model {
         let wpe = load_tensor_f32(safe_tensors, "wpe.weight");
         let ln_f_w = load_tensor_f32(safe_tensors, "ln_f.weight");
         let ln_f_b = load_tensor_f32(safe_tensors, "ln_f.bias");
-        let layers = load_all_layers(safe_tensors, config.n_layer, gpus);
+        let layers = load_all_layers(safe_tensors, &config, gpus);
 
 
         Self {wte, wte_gpu, wpe, ln_f_w, ln_f_b, layers, config}

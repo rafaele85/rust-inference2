@@ -1,5 +1,5 @@
 use half::f16;
-use crate::root::gpu::{CudaArrf16, CudaArrf32};
+use crate::root::gpu::{CudaArrf16, CudaArrf32, CudaArru32};
 
 pub type Vecf32 = Vec<f32>;
 
@@ -15,3 +15,4 @@ pub type Veci32 = Vec<i32>;
 
 pub type Weight = CudaArrf32;
 pub type WeightF16 = CudaArrf16;
+pub type WeightU32 = CudaArru32;

@@ -8,7 +8,9 @@ use memmap2::Mmap;
 use serde_json::{Map, Value};
 use crate::root::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs, AWQ_PACK_SIZE};
 use crate::root::arch::quant::compressed_tensors::ct_dequantize;
+use crate::root::arch::quant::mlx::mlx_affine_dequantize;
 use crate::root::common_types::{Vecf32, WeightF16};
+use crate::root::config::MLXConfig;
 use crate::root::gpu::Gpu;
 
 pub struct TensorEntry {
@@ -21,8 +23,15 @@ pub struct SafeTensor {
     pub mmaps: Vec<Mmap>,
     pub data_offsets: Vec<u64>,
     pub entries: HashMap<String, TensorEntry>,
-    pub path_to_model_dir: String
+    pub path_to_model_dir: String,
 }
+
+pub struct LoadLayerWeightArgs<'a, TC: MLXConfig> {
+    pub name: &'a str,
+    pub layer_no: usize,
+    pub config: &'a TC,
+}
+
 impl SafeTensor {
     fn read_header(safetensor_file: &mut File) -> (u64, HashMap<String, Value>)  {
         let mut buf = [0u8; 8];
@@ -114,13 +123,17 @@ impl SafeTensor {
         }
     }
 
-    pub fn load_layer_weight(&mut self, name: &str, layer: usize) -> Vecf32 {
-        let prefix = format!("model.layers.{}", layer);
+    pub fn load_layer_weight<TC: MLXConfig>(&mut self, args: LoadLayerWeightArgs<TC>) -> Vecf32 {
+        let LoadLayerWeightArgs {layer_no, name, config} = args;
+        let prefix = format!("model.layers.{}", layer_no);
         let bf16_key = format!("{}.{}.weight", prefix, name);
         let packed_key = format!("{}.{}.weight_packed", prefix, name);
         let scale_key = format!("{}.{}.weight_scale", prefix, name);
         let shape_key = format!("{}.{}.weight_shape", prefix, name);
         let awq_key = format!("{}.{}.qweight", prefix, name);
+        let mlx_key = format!("{}.{}.weight", prefix, name);
+        let mlx_scale_key = format!("{}.{}.scales", prefix, name);
+        let mlx_bias_key = format!("{}.{}.biases", prefix, name);
 
         if self.entries.contains_key(&bf16_key) {
             load_tensor_to_f32(self, &bf16_key)
@@ -128,21 +141,31 @@ impl SafeTensor {
             load_compressed_tensor(self, &packed_key, &scale_key, &shape_key)
         } else if self.entries.contains_key(&awq_key) {
             load_tensor_awq(self, &format!("{}.{}", prefix, name))
+        } else if self.entries.contains_key(&mlx_key) &&
+            self.entries.get(&mlx_key).map(|e| e.dtype.as_str()) == Some("U32")
+            && self.entries.contains_key(&mlx_bias_key){
+            return load_mlx_affine(self, &mlx_key, &mlx_scale_key, &mlx_bias_key, config.get_bits(), config.get_group_size());
         } else {
             panic!("Not found weight for {}.{}", prefix, name)
         }
     }
 
-    pub fn load_dense_ffns(&mut self, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
+    pub fn load_dense_ffns<TC: MLXConfig>(&mut self, layer_no: usize, config: &TC, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
         let has_dense_ffns = self.entries.contains_key(
             &format!("model.layers.{}.mlp.gate_proj.weight", layer_no)
         ) || self.entries.contains_key(
             &format!("model.layers.{}.mlp.gate_proj.qweight", layer_no)
         );
         if has_dense_ffns  {
-            let gate_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight("mlp.gate_proj", layer_no), "gate_proj_w" );
-            let up_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight( "mlp.up_proj", layer_no), "up_proj_w");
-            let down_proj_w = gpu.upload_f16_from_f32( &self.load_layer_weight( "mlp.down_proj", layer_no), "down_proj_w" );
+            let gate_proj_w = gpu.upload_f16_from_f32(
+                &self.load_layer_weight(LoadLayerWeightArgs {name: "mlp.gate_proj", layer_no, config}),
+            "gate_proj_w" );
+            let up_proj_w = gpu.upload_f16_from_f32(
+                &self.load_layer_weight( LoadLayerWeightArgs {name: "mlp.up_proj", layer_no, config}),
+            "up_proj_w");
+            let down_proj_w = gpu.upload_f16_from_f32(
+                &self.load_layer_weight(LoadLayerWeightArgs{name: "mlp.down_proj", layer_no, config}),
+                "down_proj_w" );
 
             ( Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w) )
         } else {
@@ -299,4 +322,41 @@ fn load_compressed_tensor(safe_tensor: &mut SafeTensor, packed_key: &str, scale_
     let (out_dim, in_dim) = load_shape_dims(safe_tensor, shape_key);
     ct_dequantize(&packed, &scales, out_dim, in_dim)
 }
+
+
+
+pub fn load_mlx_affine(
+    safe_tensor: &mut SafeTensor,
+    weight_key: &str,
+    scale_key: &str,
+    bias_key: &str,
+    bits: usize,
+    group_size: usize,
+) -> Vecf32 {
+    let packed = load_tensor_u32(safe_tensor, weight_key);
+    let scales = load_scales(safe_tensor, scale_key);
+    let biases = load_scales(safe_tensor, bias_key);
+
+    let shape = &safe_tensor.entries[weight_key].shape;
+    let pack_size = 32 / bits;
+
+    // Handle both 2D [out_dim, packed_cols] and 3D [num_experts, out_dim, packed_cols]
+    let (out_dim, packed_cols) = if shape.len() == 3 {
+        (shape[0] * shape[1], shape[2])
+    } else {
+        (shape[0], shape[1])
+    };
+    let in_dim = packed_cols * pack_size;
+
+    mlx_affine_dequantize(&packed, &scales, &biases, out_dim, in_dim, group_size, bits)
+}
+
+pub fn load_tensor_u32(safe_tensor: &mut SafeTensor, name: &str) -> Vec<u32> {
+    let bytes = load_tensor_raw(safe_tensor, name);
+    bytes.chunks_exact(4)
+        .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+        .collect()
+}
+
+
 

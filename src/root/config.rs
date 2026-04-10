@@ -1,10 +1,14 @@
 pub trait MLAConfig {
-    fn get_num_attention_heads(&self) -> usize;
     fn get_v_head_dim(&self) -> usize;
     fn get_rope_theta(&self) -> f32;
     fn get_kv_lora_rank(&self) -> usize;
     fn get_qk_rope_head_dim(&self) -> usize;
     fn get_qk_nope_head_dim(&self) -> usize;
+}
+
+pub trait AttnConfig {
+    fn get_num_attention_heads(&self) -> usize;
+    fn get_head_dim(&self) -> usize;
 }
 
 pub trait NormConfig {
@@ -28,4 +32,9 @@ pub trait MoeConfig {
 
 pub trait FFNConfig {
     fn get_intermediate_size(&self) -> usize;
+}
+
+pub trait MLXConfig {
+    fn get_bits(&self) -> usize;
+    fn get_group_size(&self) -> usize;
 }

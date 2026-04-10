@@ -2,7 +2,7 @@ use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs;
 use serde::Deserialize;
 use serde_json::from_str;
-use crate::root::config::{FFNConfig, MLAConfig, ModelDimConfig, MoeConfig, NormConfig};
+use crate::root::config::{AttnConfig, FFNConfig, MLAConfig, MLXConfig, ModelDimConfig, MoeConfig, NormConfig};
 
 #[derive(Deserialize)]
 pub struct DeepseekConfig {
@@ -63,9 +63,6 @@ impl NormConfig for DeepseekConfig {
 
 
 impl MLAConfig for DeepseekConfig{
-    fn get_num_attention_heads(&self) -> usize {
-        self.num_attention_heads
-    }
     fn get_v_head_dim(&self) -> usize {
         self.v_head_dim
     }
@@ -108,5 +105,24 @@ impl MoeConfig for DeepseekConfig {
 
     fn get_n_shared_experts(&self) -> usize {
         self.n_shared_experts
+    }
+}
+
+impl MLXConfig for DeepseekConfig {
+    fn get_bits(&self) -> usize {
+        0
+    }
+    fn get_group_size(&self) -> usize {
+        0
+    }
+}
+
+impl AttnConfig for DeepseekConfig {
+    fn get_num_attention_heads(&self) -> usize {
+        self.num_attention_heads
+    }
+
+    fn get_head_dim(&self) -> usize {
+        0
     }
 }

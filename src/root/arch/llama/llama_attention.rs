@@ -1,6 +1,6 @@
 use crate::root::arch::llama::llama_config::LlamaConfig;
 use crate::root::arch::llama::llama_layer::LlamaLayer;
-use crate::root::attention::{compute_qk_scores, project_v_to_attn, ComputeQKScoresArgs};
+use crate::root::attention::{gqa_attention};
 use crate::root::common_types::Vecf32;
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
@@ -96,24 +96,14 @@ pub struct LlamaGQAArgs<'a> {
 pub fn llama_gqa(args: LlamaGQAArgs) {
     let LlamaGQAArgs {config, gpu, layer, hidden, kv_cache, normed, layer_no, position } = args;
 
-    let (q, k_cache, v_cache) = &compute_qkv(ComputeQKVArgs {
+    let (q, k_cache, v_cache) = compute_qkv(ComputeQKVArgs {
         normed, layer, config, kv_cache, layer_no, position, gpu
     });
 
-    let cache_len = k_cache.len();
-
     let repeats = config.heads_to_kvheads;
-    let mut attn_out = vec![0.0f32; config.attn_dim];
+    let attn_dim = config.attn_dim;
 
-    for h in 0..config.num_attention_heads {
-        let kv_h = h / repeats;
-        let q_offset = h * config.head_dim;
-        let kv_offset = kv_h * config.head_dim;
-
-        let probs = compute_qk_scores(ComputeQKScoresArgs {kv_offset, head_dim: config.head_dim, k_cache, cache_len, q, q_offset});
-
-        project_v_to_attn(&mut attn_out, &probs, &v_cache, cache_len, config.head_dim, kv_offset, q_offset);
-    }
+    let attn_out = gqa_attention(&q, k_cache, v_cache, config, attn_dim, repeats);
 
     let projected = matmul_transposed_f16(&attn_out, &layer.o_proj_w, config.hidden_size, gpu);
 

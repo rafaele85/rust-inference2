@@ -23,9 +23,13 @@ pub fn argmax(values: &[f32]) -> usize {
     max_idx
 }
 
+pub fn sigmoid(score: f32) -> f32 {
+    let exp = (-score).exp();
+    1.0 / (1.0 + exp)
+}
 
 pub fn silu(input: &Arrf32) -> Vecf32 {
-    let result = input.iter().map(|&x| x / (1.0 + (-x).exp())).collect();
+    let result = input.iter().map(|&x| x  * sigmoid(x)).collect();
 
     result
 }
