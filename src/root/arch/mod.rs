@@ -5,3 +5,4 @@ pub mod llama;
 pub mod quant;
 pub mod deepseek;
 pub mod glm;
+pub mod qwen35;

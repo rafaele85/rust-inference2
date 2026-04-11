@@ -2,6 +2,7 @@ use crate::root::tokenizer::deserialize_eos_token_id;
 use std::fs::read_to_string;
 use serde::Deserialize;
 use serde_json::from_str;
+use crate::root::config::ModelDimConfig;
 
 #[derive(Deserialize)]
 pub struct GPT2Config {
@@ -26,5 +27,19 @@ impl GPT2Config {
         config.head_dim = config.n_embd / config.n_head;
 
         config
+    }
+}
+
+impl ModelDimConfig for GPT2Config {
+    fn get_num_hidden_layers(&self) -> usize {
+        self.n_layer
+    }
+
+    fn get_hidden_size(&self) -> usize {
+        self.n_embd
+    }
+
+    fn get_vocab_size(&self) -> usize {
+        self.vocab_size
     }
 }

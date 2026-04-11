@@ -41,3 +41,28 @@ pub fn sum_products(a: &Vecf32, b: &Vecf32, len: usize) -> f32 {
     }
     out
 }
+
+pub fn sum_products_with_offset(a: &Vecf32, a_offset: usize, b: &Vecf32, b_offset: usize, len: usize) -> f32 {
+    let mut out = 0.0f32;
+    for i in 0..len {
+        out += a[a_offset + i] * b[b_offset + i];
+    }
+    out
+}
+
+
+pub fn sum_sq(a: &Vecf32, a_offset: usize, len: usize) -> f32 {
+    let mut out = 0.0f32;
+    for i in 0..len {
+        out += a[a_offset + i] * a[a_offset + i];
+    }
+    out
+}
+
+
+pub fn scale_with_offset(out: &mut Vecf32, scale: f32, offset: usize, len: usize) {
+    for i in 0..len {
+        out[offset + i] *= scale;
+    }
+}
+

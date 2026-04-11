@@ -2,7 +2,6 @@ use crate::root::arch::common::LoadLayer;
 use crate::root::arch::llama::llama_load_weight::{llama_load_bias};
 use crate::root::arch::safetensors::{LoadLayerWeightArgs, SafeTensor};
 use crate::root::common_types::{Vecf32, WeightF16};
-use crate::root::config::MLXConfig;
 use crate::root::gpu::Gpu;
 use crate::root::layer::{load_ffn_weights, load_norm_weights, load_q_weights, FFNWeights, NormWeights};
 use crate::root::moe::StandardExpert;
@@ -31,26 +30,26 @@ pub struct LlamaLayer {
 
 
 impl LoadLayer for LlamaLayer {
-    fn load_layer<TC: MLXConfig>(safe_tensor: &mut SafeTensor, layer_no: usize, config: &TC, gpu: &mut Gpu) -> Self {
-        let norm_weights = load_norm_weights(safe_tensor, layer_no, config, gpu);
+    fn load_layer(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu) -> Self {
+        let norm_weights = load_norm_weights(safe_tensor, layer_no, gpu);
         let NormWeights {input_norm_w, post_norm_w } = norm_weights;
-        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, config, gpu);
+        let ffn_weights = load_ffn_weights(safe_tensor, layer_no, gpu);
         let FFNWeights {
             gate_proj_w, up_proj_w, down_proj_w, o_proj_w,
             experts, expert_router_w,
         } = ffn_weights;
 
-        let q_proj_w = load_q_weights(safe_tensor, layer_no, config, gpu);
+        let q_proj_w = load_q_weights(safe_tensor, layer_no, gpu);
         let q_proj_b = llama_load_bias(safe_tensor, "self_attn.q_proj", layer_no);
 
         let k_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight( LoadLayerWeightArgs { name: "self_attn.k_proj", layer_no, config}),
+            &safe_tensor.load_layer_weight( LoadLayerWeightArgs { name: "self_attn.k_proj", layer_no}),
             &format!("k_proj_w{}", layer_no)
         );
         let k_proj_b = llama_load_bias(safe_tensor, "self_attn.k_proj", layer_no);
 
         let v_proj_w = gpu.upload_f16_from_f32(
-            &safe_tensor.load_layer_weight( LoadLayerWeightArgs { name: "self_attn.v_proj", layer_no, config}),
+            &safe_tensor.load_layer_weight( LoadLayerWeightArgs { name: "self_attn.v_proj", layer_no}),
             &format!("v_proj_w{}", layer_no)
         );
         let v_proj_b = llama_load_bias(safe_tensor, "self_attn.v_proj", layer_no);

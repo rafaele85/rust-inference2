@@ -10,7 +10,6 @@ use crate::root::arch::quant::awq::{awq_dequantize, AwqDequantizeArgs, AWQ_PACK_
 use crate::root::arch::quant::compressed_tensors::ct_dequantize;
 use crate::root::arch::quant::mlx::mlx_affine_dequantize;
 use crate::root::common_types::{Vecf32, WeightF16};
-use crate::root::config::MLXConfig;
 use crate::root::gpu::Gpu;
 
 pub struct TensorEntry {
@@ -26,10 +25,9 @@ pub struct SafeTensor {
     pub path_to_model_dir: String,
 }
 
-pub struct LoadLayerWeightArgs<'a, TC: MLXConfig> {
+pub struct LoadLayerWeightArgs<'a> {
     pub name: &'a str,
     pub layer_no: usize,
-    pub config: &'a TC,
 }
 
 impl SafeTensor {
@@ -123,17 +121,35 @@ impl SafeTensor {
         }
     }
 
-    pub fn load_layer_weight<TC: MLXConfig>(&mut self, args: LoadLayerWeightArgs<TC>) -> Vecf32 {
-        let LoadLayerWeightArgs {layer_no, name, config} = args;
+    pub fn load_layer_weight_quantized(
+        &mut self,
+        name: &str,
+        layer_no: usize,
+        bits: usize,
+        group_size: usize,
+    ) -> Vecf32 {
+        let prefix = format!("model.layers.{}", layer_no);
+        let mlx_key = format!("{}.{}.weight", prefix, name);
+        let mlx_scale_key = format!("{}.{}.scales", prefix, name);
+        let mlx_bias_key = format!("{}.{}.biases", prefix, name);
+        if self.entries.contains_key(&mlx_key) &&
+            self.entries.get(&mlx_key).map(|e| e.dtype.as_str()) == Some("U32")
+            && self.entries.contains_key(&mlx_bias_key) {
+            let res = load_mlx_affine(self, &mlx_key, &mlx_scale_key, &mlx_bias_key, bits, group_size);
+
+            return res;
+        }
+        panic!("Not found weight for {}.{}", prefix, name)
+    }
+
+    pub fn load_layer_weight(&mut self, args: LoadLayerWeightArgs) -> Vecf32 {
+        let LoadLayerWeightArgs {layer_no, name} = args;
         let prefix = format!("model.layers.{}", layer_no);
         let bf16_key = format!("{}.{}.weight", prefix, name);
         let packed_key = format!("{}.{}.weight_packed", prefix, name);
         let scale_key = format!("{}.{}.weight_scale", prefix, name);
         let shape_key = format!("{}.{}.weight_shape", prefix, name);
         let awq_key = format!("{}.{}.qweight", prefix, name);
-        let mlx_key = format!("{}.{}.weight", prefix, name);
-        let mlx_scale_key = format!("{}.{}.scales", prefix, name);
-        let mlx_bias_key = format!("{}.{}.biases", prefix, name);
 
         if self.entries.contains_key(&bf16_key) {
             load_tensor_to_f32(self, &bf16_key)
@@ -141,16 +157,12 @@ impl SafeTensor {
             load_compressed_tensor(self, &packed_key, &scale_key, &shape_key)
         } else if self.entries.contains_key(&awq_key) {
             load_tensor_awq(self, &format!("{}.{}", prefix, name))
-        } else if self.entries.contains_key(&mlx_key) &&
-            self.entries.get(&mlx_key).map(|e| e.dtype.as_str()) == Some("U32")
-            && self.entries.contains_key(&mlx_bias_key){
-            return load_mlx_affine(self, &mlx_key, &mlx_scale_key, &mlx_bias_key, config.get_bits(), config.get_group_size());
         } else {
             panic!("Not found weight for {}.{}", prefix, name)
         }
     }
 
-    pub fn load_dense_ffns<TC: MLXConfig>(&mut self, layer_no: usize, config: &TC, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
+    pub fn load_dense_ffns(&mut self, layer_no: usize, gpu: &mut Gpu) -> (Option<WeightF16>, Option<WeightF16>, Option<WeightF16>) {
         let has_dense_ffns = self.entries.contains_key(
             &format!("model.layers.{}.mlp.gate_proj.weight", layer_no)
         ) || self.entries.contains_key(
@@ -158,13 +170,13 @@ impl SafeTensor {
         );
         if has_dense_ffns  {
             let gate_proj_w = gpu.upload_f16_from_f32(
-                &self.load_layer_weight(LoadLayerWeightArgs {name: "mlp.gate_proj", layer_no, config}),
+                &self.load_layer_weight(LoadLayerWeightArgs {name: "mlp.gate_proj", layer_no}),
             "gate_proj_w" );
             let up_proj_w = gpu.upload_f16_from_f32(
-                &self.load_layer_weight( LoadLayerWeightArgs {name: "mlp.up_proj", layer_no, config}),
+                &self.load_layer_weight( LoadLayerWeightArgs {name: "mlp.up_proj", layer_no}),
             "up_proj_w");
             let down_proj_w = gpu.upload_f16_from_f32(
-                &self.load_layer_weight(LoadLayerWeightArgs{name: "mlp.down_proj", layer_no, config}),
+                &self.load_layer_weight(LoadLayerWeightArgs{name: "mlp.down_proj", layer_no}),
                 "down_proj_w" );
 
             ( Some(gate_proj_w), Some(up_proj_w), Some(down_proj_w) )

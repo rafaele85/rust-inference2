@@ -4,6 +4,7 @@ use crate::root::arch::gpt2::gpt2_layer::GPT2Layer;
 use crate::root::arch::gpt2::gpt2_transformer::{gpt2_generate_token, GPT2GenerateTokenArgs};
 use crate::root::arch::safetensors::{load_tensor_f32, SafeTensor};
 use crate::root::common_types::{Vecf32, Weight};
+use crate::root::config::ModelDimConfig;
 use crate::root::generate::{GenerateNextTokenArgs};
 use crate::root::gpu::Gpu;
 use crate::root::model::GenerateNextToken;
@@ -26,7 +27,7 @@ impl GPT2Model {
         let wpe = load_tensor_f32(safe_tensors, "wpe.weight");
         let ln_f_w = load_tensor_f32(safe_tensors, "ln_f.weight");
         let ln_f_b = load_tensor_f32(safe_tensors, "ln_f.bias");
-        let layers = load_all_layers(safe_tensors, &config, gpus);
+        let layers = load_all_layers(safe_tensors, config.get_num_hidden_layers(), gpus);
 
 
         Self {wte, wte_gpu, wpe, ln_f_w, ln_f_b, layers, config}

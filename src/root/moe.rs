@@ -2,7 +2,8 @@ use std::thread;
 use half::f16;
 use crate::root::activation::{silu, softmax};
 use crate::root::arch::quant::compressed_tensors::ct_dequantize;
-use crate::root::arch::safetensors::{load_scales, load_shape_dims, load_tensor_awq, load_tensor_i32, SafeTensor};
+use crate::root::arch::safetensors::{load_scales, load_shape_dims, load_tensor_awq, load_tensor_i32,
+                                     SafeTensor};
 use crate::root::common_types::{Vecf16, Vecf32, WeightF16};
 use crate::root::config::{ModelDimConfig, MoeConfig};
 use crate::root::gpu::Gpu;
@@ -60,7 +61,8 @@ pub fn moe_ffn<TExpert: ExpertLike, TConfig: MoeConfig + ModelDimConfig>(args: M
     }
 
     let moe_out = apply_experts(ApplyExpertsArgs {
-        top_indices: &top_indices, gpu, experts, normed, expert_probs : &top_probs, config
+        top_indices: &top_indices, gpu, experts, normed, expert_probs : &top_probs,
+        hidden_size: config.get_hidden_size(), moe_intermediate_size: config.get_moe_intermediate_size()
     });
 
     if config.get_routed_scaling_factor() != 1.0 {
@@ -75,23 +77,26 @@ pub fn moe_ffn<TExpert: ExpertLike, TConfig: MoeConfig + ModelDimConfig>(args: M
 
 
 
-struct ApplyExpertsArgs<'a, TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig> {
+struct ApplyExpertsArgs<'a, TExpert: ExpertLike> {
     normed: &'a Vecf32,
     top_indices: &'a Vec<usize>,
     experts: &'a Vec<TExpert>,
     gpu: &'a mut Gpu,
     expert_probs : &'a Vecf32,
-    config: &'a TConfig,
+    hidden_size: usize,
+    moe_intermediate_size: usize,
 }
 
-fn apply_experts<TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig>(args: ApplyExpertsArgs<TExpert, TConfig>) -> Vecf32 {
-    let ApplyExpertsArgs {top_indices, experts, normed, config, gpu, expert_probs} = args;
-    let mut moe_out = vec![0.0f32; config.get_hidden_size()];
+fn apply_experts<TExpert: ExpertLike>(args: ApplyExpertsArgs<TExpert>) -> Vecf32 {
+    let ApplyExpertsArgs {top_indices, experts, normed, hidden_size, gpu, expert_probs,
+        moe_intermediate_size} = args;
+    let mut moe_out = vec![0.0f32; hidden_size];
 
     for (k, &expert_idx) in top_indices.iter().enumerate() {
         let expert = &experts[expert_idx];
         let w = expert_probs[k];
-        apply_expert(ApplyExpertArgs {normed, w, config, moe_out: &mut moe_out, expert, gpu});
+        apply_expert(ApplyExpertArgs {normed, w, moe_out: &mut moe_out, expert, gpu, hidden_size,
+            moe_intermediate_size});
     }
 
     moe_out
@@ -99,32 +104,34 @@ fn apply_experts<TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig>(args:
 
 
 
-struct ApplyExpertArgs<'a, TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig> {
+struct ApplyExpertArgs<'a, TExpert: ExpertLike> {
     normed: &'a Vecf32,
     expert: &'a TExpert,
     w: f32,
     gpu: &'a mut Gpu,
     moe_out: &'a mut Vecf32,
-    config: &'a TConfig,
+    hidden_size: usize,
+    moe_intermediate_size: usize
 }
 
-fn apply_expert<TExpert: ExpertLike, TConfig: ModelDimConfig + MoeConfig>(args: ApplyExpertArgs<TExpert, TConfig>) {
-    let ApplyExpertArgs {normed, expert, gpu, w, mut moe_out, config} = args;
+fn apply_expert<TExpert: ExpertLike>(args: ApplyExpertArgs<TExpert>) {
+    let ApplyExpertArgs {normed, expert, gpu, w, mut moe_out, hidden_size, moe_intermediate_size} = args;
     let gate_proj_w = &expert.gate_proj_w();
     let up_proj_w = &expert.up_proj_w();
     let down_proj_w = &expert.down_proj_w();
 
-    let gate = matmul_transposed_f16(normed, &gate_proj_w, config.get_moe_intermediate_size(), gpu);
-    let up = matmul_transposed_f16(normed, &up_proj_w, config.get_moe_intermediate_size(), gpu);
+    let gate = matmul_transposed_f16(normed, &gate_proj_w, moe_intermediate_size, gpu);
+    let up = matmul_transposed_f16(normed, &up_proj_w, moe_intermediate_size, gpu);
     let silu_gate = silu(&gate);
-    let ffn_act = hadamard(silu_gate, up, config.get_moe_intermediate_size());
+    let ffn_act = hadamard(silu_gate, up, moe_intermediate_size);
 
-    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, config.get_hidden_size(), gpu);
-    scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out, start_offset: 0, num_iterations: config.get_hidden_size()});
+    let expert_out = matmul_transposed_f16(&ffn_act, &down_proj_w, hidden_size, gpu);
+    scale_and_add(ScaleAndAddArgs {output: &mut moe_out, scale: w, source: &expert_out,
+        start_offset: 0, num_iterations: hidden_size});
 }
 
 
-fn compute_scores(normed: &Vecf32, router_w: &Vecf32, hidden_size: usize, num_experts: usize) -> Vecf32 {
+pub fn compute_scores(normed: &Vecf32, router_w: &Vecf32, hidden_size: usize, num_experts: usize) -> Vecf32 {
     let mut scores = vec![0.0f32; num_experts];
     for i in 0..num_experts {
         let mut dot = 0.0f32;
@@ -137,7 +144,7 @@ fn compute_scores(normed: &Vecf32, router_w: &Vecf32, hidden_size: usize, num_ex
 }
 
 
-fn get_top_scores(scores: &Vecf32, num_experts: usize, num_experts_per_tok: usize) -> (Vecf32, Vec<usize>) {
+pub fn get_top_scores(scores: &Vecf32, num_experts: usize, num_experts_per_tok: usize) -> (Vecf32, Vec<usize>) {
     let mut top_indices: Vec<usize> = (0..num_experts).collect();
     top_indices.sort_by(|&a, &b| {
         let score_b = scores[b];
