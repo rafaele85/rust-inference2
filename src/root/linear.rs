@@ -51,7 +51,7 @@ pub fn sum_products_with_offset(a: &Vecf32, a_offset: usize, b: &Vecf32, b_offse
 }
 
 
-pub fn sum_sq(a: &Vecf32, a_offset: usize, len: usize) -> f32 {
+pub fn sum_sq(a: &Arrf32, a_offset: usize, len: usize) -> f32 {
     let mut out = 0.0f32;
     for i in 0..len {
         out += a[a_offset + i] * a[a_offset + i];

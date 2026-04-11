@@ -35,7 +35,7 @@ pub fn glm_generate_token(args: GLMGenerateTokenArgs) -> usize {
     }
 
     let default_gpu = get_default_gpu(&mut gpus, "logits");
-    let output_token_id = logits(hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
+    let output_token_id = logits(&hidden, final_norm_w, lm_head_w, config.vocab_size, config.rms_norm_eps, default_gpu);
 
     output_token_id
 }

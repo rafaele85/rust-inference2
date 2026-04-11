@@ -195,7 +195,7 @@ pub fn generate_token<TLayer: SharedExpertLayer + FFNLayer + MOELayer + MLAKVLay
     }
 
     let default_gpu = get_default_gpu(&mut gpus, "logits");
-    let output_token_id = logits(hidden, model.get_final_norm_w(), model.get_lm_head_w(), config.get_vocab_size(), config.get_rms_norm_eps(), default_gpu);
+    let output_token_id = logits(&hidden, model.get_final_norm_w(), model.get_lm_head_w(), config.get_vocab_size(), config.get_rms_norm_eps(), default_gpu);
 
     output_token_id
 }
