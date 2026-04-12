@@ -8,7 +8,7 @@ use crate::root::common_types::Vecf32;
 use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
 use crate::root::logits::logits;
-use crate::root::norm::rms_norm;
+use crate::root::norm::{rms_norm_zero_centered};
 
 pub fn qwen35_generate_token(
     token_id: usize,
@@ -26,16 +26,16 @@ pub fn qwen35_generate_token(
     for i in 0..tc.num_hidden_layers {
         let gpu = get_gpu(gpus, i, tc.num_hidden_layers);
         let input_norm_w = layer_input_norm(model, i);
-        let normed = rms_norm(&hidden, input_norm_w, tc.rms_norm_eps);
+        let normed = rms_norm_zero_centered(&hidden, input_norm_w, tc.rms_norm_eps);
         layer_linear_attention(model, i, &mut hidden, &normed, &tc, kv_cache, position, gpu);
         let post_norm_w = layer_post_norm(model, i);
-        let post_normed = rms_norm(&hidden, post_norm_w, tc.rms_norm_eps);
+        let post_normed = rms_norm_zero_centered(&hidden, post_norm_w, tc.rms_norm_eps);
         let moe = layer_moe(model, i);
         qwen35_moe_ffn(&mut hidden, &post_normed, moe, tc.num_experts_per_tok, gpu);
     }
 
     let default_gpu = get_default_gpu(gpus, "logits");
-    let res = logits(hidden, &model.final_norm_w, &model.lm_head_w, tc.vocab_size, tc.rms_norm_eps, default_gpu);
+    let res = logits(&hidden, &model.final_norm_w, &model.lm_head_w, tc.vocab_size, tc.rms_norm_eps, default_gpu);
 
     res
 }

@@ -7,7 +7,7 @@ use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
 use crate::root::linear::add_to_vector;
 use crate::root::matmul::matmul_transposed_f16;
-use crate::root::norm::rms_norm;
+use crate::root::norm::{rms_norm_zero_centered};
 use crate::root::rope::{apply_rope, compute_rope_freqs, ApplyRopeArgs};
 
 fn qwen35_compute_q_k(
@@ -23,7 +23,7 @@ fn qwen35_compute_q_k(
     for h in 0..num_heads {
         let offset = h * head_dim;
         let head_slice = &raw[offset..offset + head_dim];
-        let normed_head = rms_norm(head_slice, norm_w, rms_norm_eps);
+        let normed_head = rms_norm_zero_centered(head_slice, norm_w, rms_norm_eps);
         out[offset..offset+head_dim].copy_from_slice(&normed_head);
     }
 

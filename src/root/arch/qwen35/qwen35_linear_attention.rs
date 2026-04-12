@@ -6,7 +6,7 @@ use crate::root::gpu::Gpu;
 use crate::root::kv_cache::KVCache;
 use crate::root::linear::{add_to_vector, sum_products_with_offset};
 use crate::root::matmul::{matmul_transposed_f16};
-use crate::root::norm::{l2_norm, rms_norm, softplus};
+use crate::root::norm::{l2_norm, rms_norm_zero_centered, softplus};
 
 pub struct Qwen35LinearQKV {
     pub q: Vecf32,  // [num_k_heads * key_head_dim] = [2048]
@@ -200,7 +200,7 @@ pub fn qwen35_linear_attn_output(
     for h in 0..num_heads {
         let offset = h * head_dim;
         let head_slice = &recurrent_out[offset..offset + head_dim];
-        let normed_head = rms_norm(head_slice, &layer.norm_w, tc.rms_norm_eps);
+        let normed_head = rms_norm_zero_centered(head_slice, &layer.norm_w, tc.rms_norm_eps);
 
         for i in 0..head_dim {
             gated[offset + i] = normed_head[i] * z[offset + i];
