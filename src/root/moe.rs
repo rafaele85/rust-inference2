@@ -295,3 +295,50 @@ pub fn load_experts_ct(safe_tensor: &mut SafeTensor, layer_no: usize, gpu: &mut 
     }
     Some(exps)
 }
+
+pub fn load_experts_ct_prefixed(st: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu, prefix: &str) -> Vec<StandardExpert> {
+    let num_experts = (0..).take_while(|e| {
+        st.entries.contains_key(&format!("{}.mlp.experts.{}.gate_proj.weight_packed", prefix, e))
+    }).count();
+
+    println!("  Loading {} CT experts for layer {}", num_experts, layer_no);
+
+    let mut raw_inputs = Vec::new();
+    for e in 0..num_experts {
+        let mut read_ct = |name: &str| -> (Vec<i32>, Vecf32, usize, usize) {
+            let packed_key = format!("{}.mlp.experts.{}.{}.weight_packed", prefix, e, name);
+            let scale_key = format!("{}.mlp.experts.{}.{}.weight_scale", prefix, e, name);
+            let shape_key = format!("{}.mlp.experts.{}.{}.weight_shape", prefix, e, name);
+            let packed = load_tensor_i32(st, &packed_key);
+            let scales = load_scales(st, &scale_key);
+            let (out_dim, in_dim) = load_shape_dims(st, &shape_key);
+            (packed, scales, out_dim, in_dim)
+        };
+        let (gp, gs, go, gi) = read_ct("gate_proj");
+        let (up, us, uo, ui) = read_ct("up_proj");
+        let (dp, ds, do_, di) = read_ct("down_proj");
+        raw_inputs.push((gp, gs, go, gi, up, us, uo, ui, dp, ds, do_, di));
+    }
+
+    let raw_data: Vec<(Vecf32, Vecf32, Vecf32)> = std::thread::scope(|s| {
+        let handles: Vec<_> = raw_inputs.iter().map(|input| {
+            s.spawn(|| {
+                let gate = ct_dequantize(&input.0, &input.1, input.2, input.3);
+                let up = ct_dequantize(&input.4, &input.5, input.6, input.7);
+                let down = ct_dequantize(&input.8, &input.9, input.10, input.11);
+                (gate, up, down)
+            })
+        }).collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut exps = Vec::with_capacity(num_experts);
+    for (gate, up, down) in &raw_data {
+        let gate_proj_w = gpu.upload_f16_from_f32(gate, "exp_gate");
+        let up_proj_w = gpu.upload_f16_from_f32(up, "exp_up");
+        let down_proj_w = gpu.upload_f16_from_f32(down, "exp_down");
+        exps.push(StandardExpert { gate_proj_w, up_proj_w, down_proj_w });
+    }
+
+    exps
+}

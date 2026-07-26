@@ -7,7 +7,7 @@ use crate::root::gpu::Gpu;
 use crate::root::kv_cache::{KVCache, PositionKVVectors};
 use crate::root::linear::add_to_vector;
 use crate::root::matmul::matmul_transposed_f16;
-use crate::root::norm::{rms_norm_zero_centered};
+use crate::root::norm::{rms_norm, rms_norm_zero_centered};
 use crate::root::rope::{apply_rope, compute_rope_freqs, ApplyRopeArgs};
 
 fn qwen35_compute_q_k(
@@ -37,7 +37,6 @@ pub struct Qwen35KV {
     pub v: Vecf32,
     pub gate: Vecf32,
 }
-
 pub fn qwen35_compute_qkv(
     normed: &Vecf32,
     layer: &Qwen35FullAttnLayer,
@@ -50,19 +49,38 @@ pub fn qwen35_compute_qkv(
     let attn_dim = num_heads * head_dim;
     let kv_dim = num_kv_heads * head_dim;
 
-    let k_proj_w = &layer.k_proj_w;
-    let v_proj_w = &layer.v_proj_w;
+    // Q proj outputs 2x: [num_heads * head_dim * 2]
+    // Layout per head: [q(head_dim), gate(head_dim)]
+    let q_gate_raw = matmul_transposed_f16(normed, &layer.q_proj_w, attn_dim * 2, gpu);
 
-    let mut q_gate = matmul_transposed_f16(normed, &layer.q_proj_w, attn_dim * 2, gpu);
-    let gate = q_gate.split_off(attn_dim);
-    let q_raw = q_gate;
-    let k_raw = matmul_transposed_f16(normed, k_proj_w, kv_dim, gpu);
+    //debug
+    println!("q_gate_raw[0..5]: {:?}", &q_gate_raw[..5]);
+    println!("q_gate_raw[256..261]: {:?}", &q_gate_raw[256..261]);
 
+    let mut q_raw = vec![0.0f32; attn_dim];
+    let mut gate = vec![0.0f32; attn_dim];
+    for h in 0..num_heads {
+        let src = h * head_dim * 2;
+        let dst = h * head_dim;
+
+        q_raw[dst..dst + head_dim].copy_from_slice(&q_gate_raw[src..src + head_dim]);
+
+        //debug
+        println!("q_raw first 5: {:?}", &q_raw[..5]);
+
+        gate[dst..dst + head_dim].copy_from_slice(&q_gate_raw[src + head_dim..src + head_dim * 2]);
+    }
+
+
+    // K and V are separate projections, no deinterleave needed
+    let k_raw = matmul_transposed_f16(normed, &layer.k_proj_w, kv_dim, gpu);
+    let v = matmul_transposed_f16(normed, &layer.v_proj_w, kv_dim, gpu);
+
+    // Per-head QK norms (zero-centered for AWQ weights)
     let q = qwen35_compute_q_k(&q_raw, &layer.q_norm_w, head_dim, num_heads, tc.rms_norm_eps);
     let k = qwen35_compute_q_k(&k_raw, &layer.k_norm_w, head_dim, num_kv_heads, tc.rms_norm_eps);
-    let v = matmul_transposed_f16(normed, v_proj_w, kv_dim, gpu);
 
-    Qwen35KV {q, k, v, gate}
+    Qwen35KV { q, k, v, gate }
 }
 pub fn qwen35_apply_rope(
     q: &mut Vecf32,
@@ -71,7 +89,7 @@ pub fn qwen35_apply_rope(
     position: usize,
 ) {
     let rope_dim = (tc.head_dim as f32 * tc.rope_parameters.partial_rotary_factor) as usize;
-    let nope_dim = tc.head_dim - rope_dim;
+    let nope_dim = 0;
     let half = rope_dim / 2;
     let (cos, sin) = compute_rope_freqs(half, position, tc.rope_parameters.rope_theta);
 

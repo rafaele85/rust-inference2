@@ -25,25 +25,21 @@ impl Qwen35Model {
         let num_layers = config.text_config.num_hidden_layers;
 
         println!("Loading embeddings...");
-        let embed_weights = load_mlx_affine(st,
-                                            "language_model.model.embed_tokens.weight",
-                                            "language_model.model.embed_tokens.scales",
-                                            "language_model.model.embed_tokens.biases",
-                                            bits, gs);
 
-        let final_norm_w = load_tensor_to_f32(st, "language_model.model.norm.weight");
-
+        let embed_weights = load_tensor_to_f32(st, "model.language_model.embed_tokens.weight");
+        let final_norm_w = load_tensor_to_f32(st, "model.language_model.norm.weight");
         let default_gpu = get_default_gpu(gpus, "lm_head");
-        let lm_head = load_mlx_affine(st,
-                                      "language_model.lm_head.weight",
-                                      "language_model.lm_head.scales",
-                                      "language_model.lm_head.biases",
-                                      bits, gs);
+        let lm_head = load_tensor_to_f32(st, "lm_head.weight");
         let lm_head_w = default_gpu.upload_f16_from_f32(&lm_head, "lm_head");
 
         let mut layers = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
             let gpu = get_gpu(gpus, i, num_layers);
+
+            //debug
+            let (free, _total) = gpu.mem_info();
+            println!("Layer {} -> GPU {} ({:.1} GB free)", i, gpu.gpu_index, free as f64 / 1024.0 / 1024.0 / 1024.0);
+
             if config.is_linear_attention(i) {
                 println!("Loading layer {} (linear)...", i);
                 let layer = Qwen35LinearAttnLayer::load(st, i, gpu, &config);

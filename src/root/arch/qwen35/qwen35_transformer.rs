@@ -1,3 +1,4 @@
+use crate::root::activation::argmax;
 use crate::root::arch::qwen35::qwen35::{Qwen35Layer, Qwen35Model};
 use crate::root::arch::qwen35::qwen35_attention::qwen35_full_attention;
 use crate::root::arch::qwen35::qwen35_config::TextConfig;
@@ -7,8 +8,8 @@ use crate::root::arch::qwen35::qwen35_moe::qwen35_moe_ffn;
 use crate::root::common_types::Vecf32;
 use crate::root::gpu::{get_default_gpu, get_gpu, Gpu};
 use crate::root::kv_cache::KVCache;
-use crate::root::logits::logits;
-use crate::root::norm::{rms_norm_zero_centered};
+use crate::root::matmul::matmul_transposed_f16;
+use crate::root::norm::{rms_norm, rms_norm_zero_centered};
 
 pub fn qwen35_generate_token(
     token_id: usize,
@@ -35,7 +36,9 @@ pub fn qwen35_generate_token(
     }
 
     let default_gpu = get_default_gpu(gpus, "logits");
-    let res = logits(&hidden, &model.final_norm_w, &model.lm_head_w, tc.vocab_size, tc.rms_norm_eps, default_gpu);
+    let normed = rms_norm_zero_centered(&hidden, &model.final_norm_w, tc.rms_norm_eps);
+    let logits_vec = matmul_transposed_f16(&normed, &model.lm_head_w, tc.vocab_size, default_gpu);
+    let res = argmax(&logits_vec);
 
     res
 }
@@ -54,7 +57,7 @@ fn layer_linear_attention(
 ) {
     match &model.layers[layer_no] {
         Qwen35Layer::Linear(l) => {
-            qwen35_linear_attention(hidden, &normed, l, tc, kv_cache, position, gpu);
+            qwen35_linear_attention(hidden, &normed, l, tc, kv_cache, layer_no, gpu);
         },
         Qwen35Layer::Full(l) => {
             qwen35_full_attention(hidden, &normed, l, tc, kv_cache, layer_no, position, gpu);

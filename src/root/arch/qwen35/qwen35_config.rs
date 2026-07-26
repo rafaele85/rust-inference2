@@ -45,6 +45,9 @@ pub struct TextConfig {
 
     #[serde(default)]
     pub full_attention_interval: usize,
+
+    #[serde(default, deserialize_with = "deserialize_eos_token_id")]
+    pub eos_token_id: Vec<u32>,
 }
 
 fn default_conv_kernel() -> usize { 4 }
@@ -63,7 +66,7 @@ fn default_group_size() -> usize { 64 }
 pub struct Qwen35Config {
     pub text_config: TextConfig,
 
-    #[serde(deserialize_with = "deserialize_eos_token_id")]
+    #[serde(default)]
     pub eos_token_id: Vec<u32>,
 
     #[serde(default)]

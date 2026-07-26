@@ -1,21 +1,17 @@
-use std::time::Instant;
 use cudarc::driver::{LaunchAsync};
 use half::f16;
 use crate::root::arch::qwen35::qwen35_config::{Qwen35Config, TextConfig};
-use crate::root::arch::safetensors::{load_mlx_affine, load_scales, load_tensor_to_f32, load_tensor_u32, SafeTensor};
+use crate::root::arch::safetensors::{load_mlx_affine, load_scales, load_tensor_i32, load_tensor_to_f32, load_tensor_u32, SafeTensor};
 use crate::root::common_types::{Arrf32, Vecf32, WeightF16, WeightU32};
 use crate::root::gpu::Gpu;
 
 pub struct PackedExperts {
     pub gate_proj_packed: WeightU32,
     pub gate_proj_scales: WeightF16,
-    pub gate_proj_biases: WeightF16,
     pub up_proj_packed: WeightU32,
     pub up_proj_scales: WeightF16,
-    pub up_proj_biases: WeightF16,
     pub down_proj_packed: WeightU32,
     pub down_proj_scales: WeightF16,
-    pub down_proj_biases: WeightF16,
     pub num_experts: usize,
     pub moe_intermediate: usize,
     pub hidden_size: usize,
@@ -29,7 +25,6 @@ impl PackedExperts {
         input: &Arrf32,
         packed: &WeightU32,
         scales: &WeightF16,
-        biases: &WeightF16,
         expert_idx: usize,
         in_dim: usize,
         out_dim: usize,
@@ -43,7 +38,7 @@ impl PackedExperts {
 
         gpu.scratch.ensure_expert_f16(&gpu.dev, out_dim * in_dim);
 
-        let func = gpu.dev.get_func("mlx_dequant", "mlx_dequant_4bit").unwrap();
+        let func = gpu.dev.get_func("ct_dequant", "ct_dequant_4bit").unwrap();
         let total_packed = (out_dim * packed_cols) as u32;
         let block_size = 256u32;
         let grid_size = (total_packed + block_size - 1) / block_size;
@@ -58,7 +53,6 @@ impl PackedExperts {
                 (
                     &packed.slice(packed_offset..),
                     &scales.slice(scale_offset..),
-                    &biases.slice(scale_offset..),
                     &gpu.scratch.expert_f16,
                     out_dim as i32,
                     packed_cols as i32,
@@ -89,6 +83,7 @@ pub struct Qwen35MoeWeights {
     pub shared_up_proj_w: WeightF16,
     pub shared_down_proj_w: WeightF16,
 }
+
 pub struct Qwen35FullAttnLayer {
     pub input_norm_w: Vecf32,
     pub post_norm_w: Vecf32,
@@ -106,7 +101,7 @@ pub struct Qwen35FullAttnLayer {
 
 impl Qwen35FullAttnLayer {
     pub fn load(st: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu, config: &Qwen35Config) -> Self {
-        let prefix = format!("language_model.model.layers.{}", layer_no);
+        let prefix = format!("model.language_model.layers.{}", layer_no);
 
         // Norms (BF16, not quantized)
         let input_norm_w = load_tensor_to_f32(st, &format!("{}.input_layernorm.weight", prefix));
@@ -139,18 +134,12 @@ impl Qwen35FullAttnLayer {
 
 fn load_and_upload(
     st: &mut SafeTensor, gpu: &mut Gpu, prefix: &str, name: &str,
-    bits: usize, group_size: usize, label: &str, layer_no: usize,
+    _bits: usize, _group_size: usize, label: &str, layer_no: usize,
 ) -> WeightF16 {
-    let w = load_mlx_affine(
-        st,
-        &format!("{}.{}.weight", prefix, name),
-        &format!("{}.{}.scales", prefix, name),
-        &format!("{}.{}.biases", prefix, name),
-        bits, group_size,
-    );
+    let key = format!("{}.{}.weight", prefix, name);
+    let w = load_tensor_to_f32(st, &key);
     gpu.upload_f16_from_f32(&w, &format!("{}_{}", label, layer_no))
 }
-
 
 pub struct Qwen35LinearAttnLayer {
     pub input_norm_w: Vecf32,
@@ -173,7 +162,7 @@ pub struct Qwen35LinearAttnLayer {
 
 impl Qwen35LinearAttnLayer {
     pub fn load(st: &mut SafeTensor, layer_no: usize, gpu: &mut Gpu, config: &Qwen35Config) -> Self {
-        let prefix = format!("language_model.model.layers.{}", layer_no);
+        let prefix = format!("model.language_model.layers.{}", layer_no);
 
         let input_norm_w = load_tensor_to_f32(st, &format!("{}.input_layernorm.weight", prefix));
         let post_norm_w = load_tensor_to_f32(st, &format!("{}.post_attention_layernorm.weight", prefix));
@@ -223,42 +212,20 @@ fn upload_packed_proj(
     (d_packed, d_scales, d_biases)
 }
 
+
 pub fn load_moe_weights(
     st: &mut SafeTensor, gpu: &mut Gpu, prefix: &str,
-    bits: usize, group_size: usize, layer_no: usize,
+    _bits: usize, _group_size: usize, layer_no: usize,
     tc: &TextConfig,
 ) -> Qwen35MoeWeights {
-    // Router (8-bit quantized, keep on CPU)
-    let router_w = load_mlx_affine(st,
-                                   &format!("{}.mlp.gate.weight", prefix),
-                                   &format!("{}.mlp.gate.scales", prefix),
-                                   &format!("{}.mlp.gate.biases", prefix),
-                                   8, group_size);
+    let router_w = load_tensor_to_f32(st, &format!("{}.mlp.gate.weight", prefix));
+    let shared_expert_gate_w = load_tensor_to_f32(st, &format!("{}.mlp.shared_expert_gate.weight", prefix));
 
-    // Shared expert gate (8-bit, keep on CPU)
-    let shared_expert_gate_w = load_mlx_affine(st,
-                                               &format!("{}.mlp.shared_expert_gate.weight", prefix),
-                                               &format!("{}.mlp.shared_expert_gate.scales", prefix),
-                                               &format!("{}.mlp.shared_expert_gate.biases", prefix),
-                                               8, group_size);
+    let shared_gate_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.gate_proj", 0, 0, "sh_gate", layer_no);
+    let shared_up_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.up_proj", 0, 0, "sh_up", layer_no);
+    let shared_down_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.down_proj", 0, 0, "sh_down", layer_no);
 
-    // Fused experts — upload packed directly to GPU
-    let (gp, gs, gb) = upload_packed_proj(st, gpu, prefix, "gate_proj", layer_no);
-    let (up, us, ub) = upload_packed_proj(st, gpu, prefix, "up_proj", layer_no);
-    let (dp, ds, db) = upload_packed_proj(st, gpu, prefix, "down_proj", layer_no);
-
-    let experts = PackedExperts {
-        gate_proj_packed: gp, gate_proj_scales: gs, gate_proj_biases: gb,
-        up_proj_packed: up, up_proj_scales: us, up_proj_biases: ub,
-        down_proj_packed: dp, down_proj_scales: ds, down_proj_biases: db,
-        num_experts: tc.num_experts, moe_intermediate: tc.moe_intermediate_size, hidden_size: tc.hidden_size,
-        group_size,
-    };
-
-    // Shared expert (single expert, small, dequant and upload as f16)
-    let shared_gate_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.gate_proj", bits, group_size, "sh_gate", layer_no);
-    let shared_up_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.up_proj", bits, group_size, "sh_up", layer_no);
-    let shared_down_proj_w = load_and_upload(st, gpu, prefix, "mlp.shared_expert.down_proj", bits, group_size, "sh_down", layer_no);
+    let experts = load_and_fuse_ct_experts(st, gpu, prefix, layer_no, tc);
 
     Qwen35MoeWeights {
         router_w, shared_expert_gate_w, experts,
@@ -266,3 +233,62 @@ pub fn load_moe_weights(
     }
 }
 
+
+fn load_and_fuse_ct_experts(
+    st: &mut SafeTensor, gpu: &mut Gpu, prefix: &str,
+    layer_no: usize, tc: &TextConfig,
+) -> PackedExperts {
+    let num_experts = tc.num_experts;
+    let moe_intermediate = tc.moe_intermediate_size;
+    let hidden_size = tc.hidden_size;
+
+    let gate_scale_key = format!("{}.mlp.experts.0.gate_proj.weight_scale", prefix);
+    let gate_packed_key = format!("{}.mlp.experts.0.gate_proj.weight_packed", prefix);
+    let gs_shape = &st.entries[&gate_scale_key].shape;
+    let gp_shape = &st.entries[&gate_packed_key].shape;
+    let scale_cols_gate = gs_shape[1];
+    let packed_cols_gate = gp_shape[1];
+    let in_dim_gate = packed_cols_gate * 8;
+    let group_size = in_dim_gate / scale_cols_gate;
+
+    println!("  CT experts: group_size={}, gate [{},{}], scale [{},{}]",
+             group_size, gp_shape[0], gp_shape[1], gs_shape[0], gs_shape[1]);
+
+    let mut gate_packed_all: Vec<u32> = Vec::new();
+    let mut gate_scales_all: Vecf32 = Vec::new();
+    let mut up_packed_all: Vec<u32> = Vec::new();
+    let mut up_scales_all: Vecf32 = Vec::new();
+    let mut down_packed_all: Vec<u32> = Vec::new();
+    let mut down_scales_all: Vecf32 = Vec::new();
+
+    for e in 0..num_experts {
+        let gp = load_tensor_i32(st, &format!("{}.mlp.experts.{}.gate_proj.weight_packed", prefix, e));
+        let gs = load_scales(st, &format!("{}.mlp.experts.{}.gate_proj.weight_scale", prefix, e));
+        gate_packed_all.extend(gp.iter().map(|&x| x as u32));
+        gate_scales_all.extend_from_slice(&gs);
+
+        let up = load_tensor_i32(st, &format!("{}.mlp.experts.{}.up_proj.weight_packed", prefix, e));
+        let us = load_scales(st, &format!("{}.mlp.experts.{}.up_proj.weight_scale", prefix, e));
+        up_packed_all.extend(up.iter().map(|&x| x as u32));
+        up_scales_all.extend_from_slice(&us);
+
+        let dp = load_tensor_i32(st, &format!("{}.mlp.experts.{}.down_proj.weight_packed", prefix, e));
+        let ds = load_scales(st, &format!("{}.mlp.experts.{}.down_proj.weight_scale", prefix, e));
+        down_packed_all.extend(dp.iter().map(|&x| x as u32));
+        down_scales_all.extend_from_slice(&ds);
+    }
+
+    let d_gp = gpu.upload_u32(&gate_packed_all, &format!("exp_gate_p_{}", layer_no));
+    let d_gs = gpu.upload_f16_from_f32(&gate_scales_all, &format!("exp_gate_s_{}", layer_no));
+    let d_up = gpu.upload_u32(&up_packed_all, &format!("exp_up_p_{}", layer_no));
+    let d_us = gpu.upload_f16_from_f32(&up_scales_all, &format!("exp_up_s_{}", layer_no));
+    let d_dp = gpu.upload_u32(&down_packed_all, &format!("exp_down_p_{}", layer_no));
+    let d_ds = gpu.upload_f16_from_f32(&down_scales_all, &format!("exp_down_s_{}", layer_no));
+
+    PackedExperts {
+        gate_proj_packed: d_gp, gate_proj_scales: d_gs,
+        up_proj_packed: d_up, up_proj_scales: d_us,
+        down_proj_packed: d_dp, down_proj_scales: d_ds,
+        num_experts, moe_intermediate, hidden_size, group_size,
+    }
+}

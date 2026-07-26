@@ -112,8 +112,8 @@ impl Gpu {
         let blas = CudaBlas::new(dev.clone()).unwrap();
         let scratch = GpuScratch::new(&dev);
 
-        let ptx = Ptx::from_file("ptx/mlx_dequant_4bit.ptx");
-        dev.load_ptx(ptx, "mlx_dequant", &["mlx_dequant_4bit"]).unwrap();
+        let ptx = Ptx::from_file("ptx/ct_dequant_4bit.ptx");
+        dev.load_ptx(ptx, "ct_dequant", &["ct_dequant_4bit"]).unwrap();
 
         Gpu { dev, blas, gpu_index, scratch }
     }

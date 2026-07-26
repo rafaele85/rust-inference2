@@ -319,6 +319,9 @@ pub fn load_shape_dims(safe_tensor: &mut SafeTensor, shape_key: &str) -> (usize,
 }
 
 pub fn load_scales(safe_tensor: &mut SafeTensor, scale_key: &str) -> Vecf32 {
+    if !safe_tensor.entries.contains_key(scale_key) {
+        panic!("load_scales: key not found: {}", scale_key);
+    }
     let scale_dtype = safe_tensor.entries[scale_key].dtype.clone();
     match scale_dtype.as_str() {
         "BF16" => load_tensor_bf16(safe_tensor, scale_key),
