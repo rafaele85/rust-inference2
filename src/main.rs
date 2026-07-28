@@ -3,7 +3,7 @@ use crate::root::tests::deepseek_tests::deepseek_tests;
 use crate::root::tests::glm_tests::{glm_tests};
 use crate::root::tests::gpt2_tests::gpt2_tests;
 use crate::root::tests::llama_tests::llama_tests;
-use crate::root::tests::qwen35_tests::{qwen35_test_attn_detail, qwen35_test_attn_dummy, qwen35_test_generate};
+use crate::root::tests::qwen35_tests::{qwen35_test_attn_detail, qwen35_test_attn_dummy, qwen35_test_full, qwen35_test_generate, qwen35_test_linear_attn_detail};
 
 mod root;
 
@@ -21,5 +21,8 @@ fn main() {
      // qwen_affine_tests(gpus, 50);  // Qwen3.5-122B-A10B-q4-affine-g64-mlx" - fails
 
 
-    qwen35_test_attn_detail(gpus);
+    //qwen35_test_attn_detail(gpus);
+
+    qwen35_test_full(gpus);
+    //qwen35_test_linear_attn_detail(gpus);
 }

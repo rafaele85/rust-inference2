@@ -1327,6 +1327,7 @@ pub fn qwen35_test_layer_by_layer(gpus: &mut Vec<Gpu>) {
     println!("Final hidden max: {}", max_val);
 }
 
+
 pub fn qwen35_test_full(gpus: &mut Vec<Gpu>) {
     let path = PATH;
     let mut st = SafeTensor::new(path);
@@ -1336,70 +1337,42 @@ pub fn qwen35_test_full(gpus: &mut Vec<Gpu>) {
     let model = Qwen35Model::new(&mut st, gpus);
     let tc = &model.config.text_config;
 
-    // --- Part 1: Layer-by-layer debug for token 760 ---
-    println!("\n=== LAYER-BY-LAYER DEBUG ===");
-    let embed_start = 760 * tc.hidden_size;
-    let mut hidden = model.embed_weights[embed_start..embed_start + tc.hidden_size].to_vec();
-    println!("embed first 5: {:?}", &hidden[..5]);
-
-    let mut kv_cache = KVCache::new(tc.num_hidden_layers);
-
-    for i in 0..4 {
-        let gpu = &mut gpus[0];
-        match &model.layers[i] {
-            Qwen35Layer::Linear(layer) => {
-                println!("\n--- Layer {} (linear) ---", i);
-                println!("  hidden before first 5: {:?}", &hidden[..5]);
-                let normed = rms_norm_zero_centered(&hidden, &layer.input_norm_w, tc.rms_norm_eps);
-                println!("  normed first 5: {:?}", &normed[..5]);
-                qwen35_linear_attention(&mut hidden, &normed, layer, tc, &mut kv_cache, i, gpu);
-                println!("  hidden after attn first 5: {:?}", &hidden[..5]);
-                let post_normed = rms_norm_zero_centered(&hidden, &layer.post_norm_w, tc.rms_norm_eps);
-                qwen35_moe_ffn(&mut hidden, &post_normed, &layer.moe, tc.num_experts_per_tok, gpu);
-                println!("  hidden after MoE first 5: {:?}", &hidden[..5]);
-            }
-            Qwen35Layer::Full(layer) => {
-                println!("\n--- Layer {} (full) ---", i);
-                println!("  hidden before first 5: {:?}", &hidden[..5]);
-                let normed = rms_norm_zero_centered(&hidden, &layer.input_norm_w, tc.rms_norm_eps);
-                println!("  normed first 5: {:?}", &normed[..5]);
-                qwen35_full_attention(&mut hidden, &normed, layer, tc, &mut kv_cache, i, 0, gpu);
-                println!("  hidden after attn first 5: {:?}", &hidden[..5]);
-                let post_normed = rms_norm_zero_centered(&hidden, &layer.post_norm_w, tc.rms_norm_eps);
-                qwen35_moe_ffn(&mut hidden, &post_normed, &layer.moe, tc.num_experts_per_tok, gpu);
-                println!("  hidden after MoE first 5: {:?}", &hidden[..5]);
-                println!("  input_norm_w[0]={}, q_norm_w[0]={}", layer.input_norm_w[0], layer.q_norm_w[0]);
-            }
-        }
-    }
-
-    // --- Part 2: Full generation ---
+    // --- Generation ---
     println!("\n=== GENERATION ===");
     let prompt = "The capital of France is";
     let input_ids = tokenizer.encode(prompt);
     println!("Input tokens: {:?}", input_ids);
 
-    let mut kv_cache2 = KVCache::new(tc.num_hidden_layers);
+    let mut kv_cache = KVCache::new(tc.num_hidden_layers);
+
     let mut last_token = 0;
     for (i, &token_id) in input_ids.iter().enumerate() {
-        last_token = qwen35_generate_token(token_id as usize, i, &model, &mut kv_cache2, gpus);
+        last_token = qwen35_generate_token(token_id as usize, i, &model, &mut kv_cache, gpus);
         println!("pos {} token {} -> {}", i, token_id, last_token);
     }
 
     let mut all_ids = input_ids.clone();
     all_ids.push(last_token as u32);
 
-    for _ in 0..20 {
+    let num_gen_tokens = 20;
+    let t0 = std::time::Instant::now();
+
+    for _ in 0..num_gen_tokens {
         let pos = all_ids.len() - 1;
         let token_id = *all_ids.last().unwrap() as usize;
-        let next = qwen35_generate_token(token_id, pos, &model, &mut kv_cache2, gpus);
+        let next = qwen35_generate_token(token_id, pos, &model, &mut kv_cache, gpus);
         all_ids.push(next as u32);
     }
 
+    let elapsed = t0.elapsed().as_secs_f64();
     let result = tokenizer.decode(&all_ids);
     println!("Qwen3.5: {}", result);
+    println!("{:.1} tokens/sec ({} tokens in {:.1}s, {:.0}ms/token)",
+             num_gen_tokens as f64 / elapsed,
+             num_gen_tokens,
+             elapsed,
+             elapsed * 1000.0 / num_gen_tokens as f64);
 }
-
 
 pub fn qwen35_affine_tests(gpus: &mut Vec<Gpu>, max_tokens: usize) {
     let path= PATH;
@@ -1469,15 +1442,45 @@ pub fn qwen35_test_attn_detail(gpus: &mut Vec<Gpu>) {
     let hidden = vec![0.01f32; tc.hidden_size];
     let normed = rms_norm_zero_centered(&hidden, &layer.input_norm_w, tc.rms_norm_eps);
 
-    // Step by step
     let mut qkv = qwen35_compute_qkv(&normed, &layer, tc, gpu);
+    println!("q first 5: {:?}", &qkv.q[..5]);
+    println!("k first 5: {:?}", &qkv.k[..5]);
+    println!("v first 5: {:?}", &qkv.v[..5]);
+    println!("gate first 5: {:?}", &qkv.gate[..5]);
+    println!("gate sigmoid mean: {}", qkv.gate.iter().map(|&x| sigmoid(x)).sum::<f32>() / qkv.gate.len() as f32);
 
     qwen35_apply_rope(&mut qkv.q, &mut qkv.k, tc, 0);
+    println!("q after rope first 5: {:?}", &qkv.q[..5]);
 
-    // Single token: attn_out = v (with GQA)
     let mut kv_cache = KVCache::new(tc.num_hidden_layers);
     kv_cache.append(3, qkv.k.clone(), qkv.v.clone());
     let attn_out = qwen35_gqa_attention(&qkv.q, &kv_cache.k[3], &kv_cache.v[3], tc);
+    println!("gqa_attn first 5: {:?}", &attn_out[..5]);
 
     let projected = qwen35_gate_and_project(&attn_out, &qkv.gate, &layer.o_proj_w, tc.hidden_size, gpu);
+    println!("projected first 5: {:?}", &projected[..5]);
+}
+
+
+pub fn qwen35_test_linear_attn_detail(gpus: &mut Vec<Gpu>) {
+    let path = "/mnt/data/models/Qwen3.5-122B-A10B-AWQ-4bit";
+    let mut st = SafeTensor::new(path);
+    let config = Qwen35Config::load(&format!("{}/config.json", path));
+    let tc = &config.text_config;
+    let gpu = &mut gpus[0];
+
+    let layer = Qwen35LinearAttnLayer::load(&mut st, 0, gpu, &config);
+
+    let hidden = vec![0.01f32; tc.hidden_size];
+    let normed = rms_norm_zero_centered(&hidden, &layer.input_norm_w, tc.rms_norm_eps);
+    println!("normed first 5: {:?}", &normed[..5]);
+
+    let mut kv_cache = KVCache::new(tc.num_hidden_layers);
+    let mut hidden_mut = hidden.clone();
+    qwen35_linear_attention(&mut hidden_mut, &normed, &layer, tc, &mut kv_cache, 0, gpu);
+
+    let attn_out: Vec<f32> = hidden_mut.iter().zip(hidden.iter()).map(|(a, b)| a - b).collect();
+    println!("attn_out first 10: {:?}", &attn_out[..10]);
+    println!("attn_out max: {}", attn_out.iter().cloned().fold(0.0f32, |a, b| a.max(b.abs())));
+    println!("result first 10: {:?}", &hidden_mut[..10]);
 }

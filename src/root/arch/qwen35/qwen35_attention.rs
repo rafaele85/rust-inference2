@@ -53,10 +53,6 @@ pub fn qwen35_compute_qkv(
     // Layout per head: [q(head_dim), gate(head_dim)]
     let q_gate_raw = matmul_transposed_f16(normed, &layer.q_proj_w, attn_dim * 2, gpu);
 
-    //debug
-    println!("q_gate_raw[0..5]: {:?}", &q_gate_raw[..5]);
-    println!("q_gate_raw[256..261]: {:?}", &q_gate_raw[256..261]);
-
     let mut q_raw = vec![0.0f32; attn_dim];
     let mut gate = vec![0.0f32; attn_dim];
     for h in 0..num_heads {
@@ -64,9 +60,6 @@ pub fn qwen35_compute_qkv(
         let dst = h * head_dim;
 
         q_raw[dst..dst + head_dim].copy_from_slice(&q_gate_raw[src..src + head_dim]);
-
-        //debug
-        println!("q_raw first 5: {:?}", &q_raw[..5]);
 
         gate[dst..dst + head_dim].copy_from_slice(&q_gate_raw[src + head_dim..src + head_dim * 2]);
     }

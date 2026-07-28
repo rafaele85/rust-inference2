@@ -1,6 +1,7 @@
 use crate::root::activation::{sigmoid, silu};
-use crate::root::arch::qwen35::qwen35_config::TextConfig;
+use crate::root::arch::qwen35::qwen35_config::{Qwen35Config, TextConfig};
 use crate::root::arch::qwen35::qwen35_layer::Qwen35LinearAttnLayer;
+use crate::root::arch::safetensors::SafeTensor;
 use crate::root::common_types::{Arrf32, Vecf32};
 use crate::root::gpu::Gpu;
 use crate::root::kv_cache::KVCache;
@@ -157,6 +158,7 @@ pub fn qwen35_recurrent_update(
     let k_dim = tc.linear_key_head_dim;
     let v_dim = tc.linear_value_head_dim;
     let heads_per_k = num_v_heads / num_k_heads;
+    let q_scale = 1.0 / (k_dim as f32).sqrt();
 
     if recurrent_state.is_empty() {
         *recurrent_state = vec![0.0f32; num_v_heads * k_dim * v_dim];
@@ -168,14 +170,33 @@ pub fn qwen35_recurrent_update(
         let k_h = h / heads_per_k;
         let k_offset = k_h * k_dim;
         let v_offset = h * v_dim;
-        let s_offset = v_offset * k_dim;
+        let s_offset = h * k_dim * v_dim;
+
+        // Decay state first
+        for idx in 0..(k_dim * v_dim) {
+            recurrent_state[s_offset + idx] *= gates.decay[h];
+        }
 
         let s_k = state_vec_mul(recurrent_state, s_offset, &qkv.k, k_offset, k_dim, v_dim);
-        update_state(recurrent_state, s_offset, &qkv.k, k_offset, &qkv.v, v_offset, &s_k, gates.decay[h], gates.beta[h], k_dim, v_dim);
 
-        let head_out = state_vec_mul(recurrent_state, s_offset, &qkv.q, k_offset, k_dim, v_dim);
+        for ki in 0..k_dim {
+            let k_val = qkv.k[k_offset + ki];
+            let bk = gates.beta[h] * k_val;
+            for vi in 0..v_dim {
+                let idx = s_offset + ki * v_dim + vi;
+                let delta = qkv.v[v_offset + vi] - s_k[vi];
+                recurrent_state[idx] += bk * delta;
+            }
+        }
 
-        output[v_offset..v_offset + v_dim].copy_from_slice(&head_out);
+        // Output with Q scaling
+        for vi in 0..v_dim {
+            let mut sum = 0.0f32;
+            for ki in 0..k_dim {
+                sum += recurrent_state[s_offset + ki * v_dim + vi] * qkv.q[k_offset + ki] * q_scale;
+            }
+            output[v_offset + vi] = sum;
+        }
     }
 
     output
@@ -196,18 +217,27 @@ pub fn qwen35_linear_attn_output(
     let head_dim = tc.linear_value_head_dim;
     let num_heads = tc.linear_num_value_heads;
 
+    println!("  recurrent_out head0 first 5: {:?}", &recurrent_out[..5]);
+    println!("  z_raw head0 first 5: {:?}", &z_raw[..5]);
+    println!("  z (silu) head0 first 5: {:?}", &z[..5]);
+    println!("  norm_w first 5: {:?}", &layer.norm_w[..5]);
+
     let mut gated = vec![0.0f32; v_dim];
     for h in 0..num_heads {
         let offset = h * head_dim;
         let head_slice = &recurrent_out[offset..offset + head_dim];
         let normed_head = rms_norm(head_slice, &layer.norm_w, tc.rms_norm_eps);
-
+        if h == 0 {
+            println!("  normed_head0 first 5: {:?}", &normed_head[..5]);
+        }
         for i in 0..head_dim {
             gated[offset + i] = normed_head[i] * z[offset + i];
         }
     }
-    let res = matmul_transposed_f16(&gated, &layer.out_proj_w, tc.hidden_size, gpu);
+    println!("  gated head0 first 5: {:?}", &gated[..5]);
 
+    let res = matmul_transposed_f16(&gated, &layer.out_proj_w, tc.hidden_size, gpu);
+    println!("  projected first 5: {:?}", &res[..5]);
     res
 }
 
@@ -232,3 +262,4 @@ pub fn qwen35_linear_attention(
 
     add_to_vector(hidden, &projected);
 }
+
